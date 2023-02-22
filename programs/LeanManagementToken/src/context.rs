@@ -27,7 +27,7 @@ const LIQUIDITY_WALLET_NONCE_LEN: usize = 1;
 const START_TIMESTAMP_LEN: usize = 8;
 
 #[derive(Accounts)]
-#[instruction(bump: u8)]
+#[repr(C)]
 pub struct InitializeContext<'info> {
     #[account(
         init,
@@ -145,7 +145,7 @@ impl<'info> InitializeContext<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(bump: u8)]
+#[repr(C)]
 pub struct ImportEthereumTokenStateContext<'info> {
     #[account(
         mut,
@@ -178,6 +178,7 @@ pub struct ImportEthereumTokenStateContext<'info> {
 }
 
 #[derive(Accounts)]
+#[repr(C)]
 pub struct BurnContext<'info> {
     #[account(mut)]
     pub mint: Box<Account<'info, Mint>>,
@@ -193,7 +194,7 @@ pub struct BurnContext<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(bump: u8)]
+#[repr(C)]
 pub struct WithdrawTokensFromCommunityWalletContext<'info> {
     #[account(mut)]
     pub contract_state: Box<Account<'info, ContractState>>,
@@ -214,7 +215,7 @@ pub struct WithdrawTokensFromCommunityWalletContext<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(bump: u8)]
+#[repr(C)]
 pub struct WithdrawTokensFromPartnershipWalletContext<'info> {
     #[account(mut)]
     pub contract_state: Box<Account<'info, ContractState>>,
@@ -235,7 +236,7 @@ pub struct WithdrawTokensFromPartnershipWalletContext<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(bump: u8)]
+#[repr(C)]
 pub struct WithdrawTokensFromMarketingWalletContext<'info> {
     #[account(mut)]
     pub contract_state: Box<Account<'info, ContractState>>,
@@ -256,7 +257,7 @@ pub struct WithdrawTokensFromMarketingWalletContext<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(bump: u8)]
+#[repr(C)]
 pub struct WithdrawTokensFromLiquidityWalletContext<'info> {
     #[account(mut)]
     pub contract_state: Box<Account<'info, ContractState>>,
