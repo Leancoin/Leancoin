@@ -178,7 +178,6 @@ pub struct ImportEthereumTokenStateContext<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(bump: u8)]
 pub struct BurnContext<'info> {
     #[account(mut)]
     pub mint: Box<Account<'info, Mint>>,
