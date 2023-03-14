@@ -5,34 +5,39 @@ use anchor_spl::token::{Mint, Token, TokenAccount};
 use crate::account::*;
 use crate::*;
 
-const CONTRACT_STATE_DISCRIMINATOR_LEN: usize = 8;
-const MINT_NONCE_LEN: usize = 1;
-const ETHEREUM_TOKEN_STATE_MAPPING_ALREADY_PERFORMED_LEN: usize = 1;
-const PROGRAM_ACCOUNT_NONCE_LEN: usize = 1;
-const BURNING_ACCOUNT_NONCE_LEN: usize = 1;
-const LAST_BURNING_MONTH_LEN: usize = 1;
-const LAST_BURNING_YEAR_LEN: usize = 1;
-const AUTHORITY_LEN: usize = 32;
+/// The discriminator is defined by the first 8 bytes of the SHA256 hash of the account's Rust identifier.
+/// It includes the name of struct type and lets Anchor know what type of account it should deserialize the data as.
+const DISCRIMINATOR_LEN: usize = 8;
 
-const VESTING_STATE_DISCRIMINATOR_LEN: usize = 8;
-const AMOUNT_COMMUNITY_WALLET_LEN: usize = 8;
-const AMOUNT_PARTNERSHIP_WALLET_LEN: usize = 8;
-const AMOUNT_MARKETING_WALLET_LEN: usize = 8;
-const AMOUNT_LIQUIDITY_WALLET_LEN: usize = 8;
-
-const COMMUNITY_WALLET_NONCE_LEN: usize = 1;
-const PARTNERSHIP_WALLET_NONCE_LEN: usize = 1;
-const MARKETING_WALLET_NONCE_LEN: usize = 1;
-const LIQUIDITY_WALLET_NONCE_LEN: usize = 1;
-const START_TIMESTAMP_LEN: usize = 8;
-
+/// Context for the initialize instruction.
+///
+/// This context is used to initialize the contract state and the vesting state.
+///
+/// The contract state is initialized with the following accounts:
+///
+/// - `contract_state` - the account that contains the contract state,
+/// - `vesting_state` - the account that contains the vesting state,
+/// - `mint` - the mint account,
+/// - `program_account` - the account that contains the tokens that will be distributed to the users,
+/// - `burning_account` - the account that contains the tokens that will be burned.
+///
+/// The vesting state is initialized with the following accounts:
+///
+/// - `community_wallet` - the account that contains the tokens that will be distributed to the community wallet,
+/// - `partnership_wallet` - the account that contains the tokens that will be distributed to the partnership wallet,
+/// - `marketing_wallet` - the account that contains the tokens that will be distributed to the marketing wallet,
+/// - `liquidity_wallet` - the account that contains the tokens that will be distributed to the liquidity wallet.
+///
+/// The context includes also:
+/// - `token_program` - the Solana token program account,
+/// - `system_program` - the Solana system program account,
+/// - `signer` - the signer of the transaction which executes initialize instruction, the signer becomes contract's owner.
 #[derive(Accounts)]
-#[repr(C)]
 pub struct InitializeContext<'info> {
     #[account(
         init,
         payer = signer,
-        space = InitializeContext::CONTRACT_STATE_LEN,
+        space = DISCRIMINATOR_LEN + ContractState::INIT_SPACE,
         seeds = [CONTRACT_STATE_SEED.as_bytes()],
         bump
     )]
@@ -40,7 +45,7 @@ pub struct InitializeContext<'info> {
     #[account(
         init,
         payer = signer,
-        space = InitializeContext::VESTING_STATE_LEN,
+        space = DISCRIMINATOR_LEN + VestingState::INIT_SPACE,
         seeds = [VESTING_STATE_SEED.as_bytes()],
         bump
     )]
@@ -122,83 +127,111 @@ pub struct InitializeContext<'info> {
     pub system_program: Program<'info, System>,
 }
 
-impl<'info> InitializeContext<'info> {
-    pub const CONTRACT_STATE_LEN: usize = CONTRACT_STATE_DISCRIMINATOR_LEN
-        + MINT_NONCE_LEN
-        + ETHEREUM_TOKEN_STATE_MAPPING_ALREADY_PERFORMED_LEN
-        + PROGRAM_ACCOUNT_NONCE_LEN
-        + BURNING_ACCOUNT_NONCE_LEN
-        + LAST_BURNING_MONTH_LEN
-        + LAST_BURNING_YEAR_LEN
-        + AUTHORITY_LEN;
-
-    pub const VESTING_STATE_LEN: usize = VESTING_STATE_DISCRIMINATOR_LEN
-        + AMOUNT_COMMUNITY_WALLET_LEN
-        + AMOUNT_PARTNERSHIP_WALLET_LEN
-        + AMOUNT_MARKETING_WALLET_LEN
-        + AMOUNT_LIQUIDITY_WALLET_LEN
-        + COMMUNITY_WALLET_NONCE_LEN
-        + PARTNERSHIP_WALLET_NONCE_LEN
-        + MARKETING_WALLET_NONCE_LEN
-        + LIQUIDITY_WALLET_NONCE_LEN
-        + START_TIMESTAMP_LEN;
-}
-
+/// Context for the import_ethereum_token_state instruction.
+///
+/// This context is used to update the contract state and the vesting state using some data from the Ethereum contract.
+///
+/// The contract state is updated using the following accounts:
+///
+/// - `contract_state` - the account that contains the contract state,
+/// - `mint` - the mint account,
+/// - `program_account` - the account that contains the tokens that will be distributed to the users.
+///
+/// The vesting state is updated using the following accounts:
+///
+/// - `vesting_state` - the account that contains the vesting state.
+///
+/// The context includes also:
+/// - `token_program` - the Solana token program account,
+/// - `signer` - the signer of the transaction which must be the contract's owner.
 #[derive(Accounts)]
-#[repr(C)]
 pub struct ImportEthereumTokenStateContext<'info> {
     #[account(
         mut,
         seeds = [CONTRACT_STATE_SEED.as_bytes()],
-        bump,
+        bump = contract_state.contract_state_nonce,
     )]
     pub contract_state: Box<Account<'info, ContractState>>,
 
     #[account(
         mut,
         seeds = [VESTING_STATE_SEED.as_bytes()],
-        bump,
+        bump = vesting_state.vesting_state_nonce,
     )]
     pub vesting_state: Box<Account<'info, VestingState>>,
 
     #[account(
         mut,
         seeds = [MINT_SEED.as_bytes()],
-        bump,
+        bump = contract_state.mint_nonce,
     )]
     pub mint: Box<Account<'info, Mint>>,
     #[account(
         mut,
         seeds = [PROGRAM_ACCOUNT_SEED.as_bytes()],
-        bump,
+        bump = contract_state.program_account_nonce,
     )]
     pub program_account: Box<Account<'info, TokenAccount>>,
     pub token_program: Program<'info, Token>,
     pub signer: Signer<'info>,
 }
 
+/// Context for the burn instruction.
+///
+/// This context is used to burn tokens from burning_account.
+///
+/// The context includes:
+/// - `burning_account` - the account that holds tokens to be burned,
+/// - `mint` - the mint account used to mint tokens that should be burned,
+/// - `contract_state` - the account that contains the contract state,
+/// - `token_program` - the Solana token program account.
 #[derive(Accounts)]
-#[repr(C)]
 pub struct BurnContext<'info> {
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [MINT_SEED.as_bytes()],
+        bump = contract_state.mint_nonce,
+    )]
     pub mint: Box<Account<'info, Mint>>,
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [CONTRACT_STATE_SEED.as_bytes()],
+        bump = contract_state.contract_state_nonce,
+    )]
     pub contract_state: Box<Account<'info, ContractState>>,
     #[account(
         mut, 
         seeds = [BURNING_ACCOUNT_SEED.as_bytes()],
-        bump,
+        bump = contract_state.burning_account_nonce,
     )]
     pub burning_account: Box<Account<'info, TokenAccount>>,
     pub token_program: Program<'info, Token>,
 }
 
+/// Context for the withdraw_tokens_from_community_wallet instruction.
+///
+/// This context is used to withdraw tokens from the community wallet.
+///
+/// The context includes:
+/// - `contract_state` - the account that contains the contract state,
+/// - `vesting_state` - the account that contains the vesting state,
+/// - `community_account` - the community wallet account which is the source of tokens to be transferred,
+/// - `deposit_wallet` - the destination account receiving tokens transferred from community_account,
+/// - `signer` - the signer of the transaction which must be the contract's owner.
+/// - `token_program` - the Solana token program account.
 #[derive(Accounts)]
-#[repr(C)]
 pub struct WithdrawTokensFromCommunityWalletContext<'info> {
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [CONTRACT_STATE_SEED.as_bytes()],
+        bump = contract_state.contract_state_nonce,
+    )]
     pub contract_state: Box<Account<'info, ContractState>>,
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [VESTING_STATE_SEED.as_bytes()],
+        bump = vesting_state.vesting_state_nonce,
+    )]
     pub vesting_state: Box<Account<'info, VestingState>>,
 
     #[account(
@@ -214,18 +247,36 @@ pub struct WithdrawTokensFromCommunityWalletContext<'info> {
     pub token_program: Program<'info, Token>,
 }
 
+/// Context for the withdraw_tokens_from_partnership_wallet instruction.
+///
+/// This context is used to withdraw tokens from the partnership wallet.
+///
+/// The context includes:
+/// - `contract_state` - the account that contains the contract state,
+/// - `vesting_state` - the account that contains the vesting state,
+/// - `partnership_account` - the partnership wallet account which is the source of tokens to be transferred,
+/// - `deposit_wallet` - the destination account receiving tokens transferred from partnership_account,
+/// - `signer` - the signer of the transaction which must be the contract's owner.
+/// - `token_program` - the Solana token program account.
 #[derive(Accounts)]
-#[repr(C)]
 pub struct WithdrawTokensFromPartnershipWalletContext<'info> {
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [CONTRACT_STATE_SEED.as_bytes()],
+        bump = contract_state.contract_state_nonce,
+    )]
     pub contract_state: Box<Account<'info, ContractState>>,
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [VESTING_STATE_SEED.as_bytes()],
+        bump = vesting_state.vesting_state_nonce,
+    )]
     pub vesting_state: Box<Account<'info, VestingState>>,
 
     #[account(
         mut,
         seeds = [PARTNERSHIP_ACCOUNT_SEED.as_bytes()],
-        bump,
+        bump = vesting_state.partnership_wallet_nonce,
     )]
     pub partnership_account: Box<Account<'info, TokenAccount>>,
     #[account(mut)]
@@ -235,18 +286,36 @@ pub struct WithdrawTokensFromPartnershipWalletContext<'info> {
     pub token_program: Program<'info, Token>,
 }
 
+/// Context for the withdraw_tokens_from_marketing_wallet instruction.
+///
+/// This context is used to withdraw tokens from the marketing wallet.
+///
+/// The context includes:
+/// - `contract_state` - the account that contains the contract state,
+/// - `vesting_state` - the account that contains the vesting state,
+/// - `marketing_account` - the marketing wallet account which is the source of tokens to be transferred,
+/// - `deposit_wallet` - the destination account receiving tokens transferred from marketing_account,
+/// - `signer` - the signer of the transaction which must be the contract's owner.
+/// - `token_program` - the Solana token program account.
 #[derive(Accounts)]
-#[repr(C)]
 pub struct WithdrawTokensFromMarketingWalletContext<'info> {
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [CONTRACT_STATE_SEED.as_bytes()],
+        bump = contract_state.contract_state_nonce,
+    )]
     pub contract_state: Box<Account<'info, ContractState>>,
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [VESTING_STATE_SEED.as_bytes()],
+        bump = vesting_state.vesting_state_nonce,
+    )]
     pub vesting_state: Box<Account<'info, VestingState>>,
 
     #[account(
         mut,
         seeds = [MARKETING_ACCOUNT_SEED.as_bytes()],
-        bump,
+        bump = vesting_state.marketing_wallet_nonce,
     )]
     pub marketing_account: Box<Account<'info, TokenAccount>>,
     #[account(mut)]
@@ -256,18 +325,36 @@ pub struct WithdrawTokensFromMarketingWalletContext<'info> {
     pub token_program: Program<'info, Token>,
 }
 
+/// Context for the withdraw_tokens_from_liquidity_wallet instruction.
+///
+/// This context is used to withdraw tokens from the liquidity wallet.
+///
+/// The context includes:
+/// - `contract_state` - the account that contains the contract state,
+/// - `vesting_state` - the account that contains the vesting state,
+/// - `liquidity_account` - the community wallet account which is the source of tokens to be transferred,
+/// - `deposit_wallet` - the destination account receiving tokens transferred from liquidity_account,
+/// - `signer` - the signer of the transaction which must be the contract's owner.
+/// - `token_program` - the Solana token program account.
 #[derive(Accounts)]
-#[repr(C)]
 pub struct WithdrawTokensFromLiquidityWalletContext<'info> {
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [CONTRACT_STATE_SEED.as_bytes()],
+        bump = contract_state.contract_state_nonce,
+    )]
     pub contract_state: Box<Account<'info, ContractState>>,
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [VESTING_STATE_SEED.as_bytes()],
+        bump = vesting_state.vesting_state_nonce,
+    )]
     pub vesting_state: Box<Account<'info, VestingState>>,
 
     #[account(
         mut,
         seeds = [LIQUIDITY_ACCOUNT_SEED.as_bytes()],
-        bump,
+        bump = vesting_state.liquidity_wallet_nonce,
     )]
     pub liquidity_account: Box<Account<'info, TokenAccount>>,
     #[account(mut)]
@@ -277,6 +364,10 @@ pub struct WithdrawTokensFromLiquidityWalletContext<'info> {
     pub token_program: Program<'info, Token>,
 }
 
+/// Generic vesting wallet context which is a trait to be implemented by all vesting wallet contexts where:
+/// - `vested_account` refers to the account (wallet) who is the source of vested tokens that can be transferred, e.g. community account, partnership account, marketing account or liquidity account,
+/// - `deposit_wallet` refers to the destination account who receives the tokens from `vested_account`,
+/// - `token_program` refers to native Solana token program account.
 pub trait VestedWalletContext<'info> {
     fn vested_account(&self) -> Box<Account<'info, TokenAccount>>;
     fn vested_account_nonce(&self) -> u8;

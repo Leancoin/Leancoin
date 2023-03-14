@@ -3,17 +3,17 @@ seeds = false
 skip-lint = false
 
 [programs.localnet]
-leancoin = "BA8o4sePXLFZqjLrXaTWaeD3MZBrWYYV1DNVbQdwNbKj"
+leancoin = "6h77QiaoS3UXaXPh7gDhfJetfkDpeW69ZdQ37EUCLL32"
 [programs.devnet]
-leancoin = "BA8o4sePXLFZqjLrXaTWaeD3MZBrWYYV1DNVbQdwNbKj"
+leancoin = "6h77QiaoS3UXaXPh7gDhfJetfkDpeW69ZdQ37EUCLL32"
 [programs.testnet]
-leancoin = "BA8o4sePXLFZqjLrXaTWaeD3MZBrWYYV1DNVbQdwNbKj"
+leancoin = "6h77QiaoS3UXaXPh7gDhfJetfkDpeW69ZdQ37EUCLL32"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "devnet"
+cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
