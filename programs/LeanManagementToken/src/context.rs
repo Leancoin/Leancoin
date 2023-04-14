@@ -1,9 +1,21 @@
-use anchor_lang::prelude::*;
-use anchor_lang::solana_program::system_program;
+use anchor_lang::{
+    error,
+    prelude::{
+        account, require_keys_neq, Account, AccountInfo, Accounts, Key, Program, Pubkey, Rent,
+        Signer, SolanaSysvar, System, ToAccountInfo,
+    },
+    solana_program::system_program,
+    Id, Space,
+};
 use anchor_spl::token::{Mint, Token, TokenAccount};
 
-use crate::account::*;
-use crate::*;
+use crate::account::{ContractState, VestingState};
+
+use crate::{
+    BURNING_ACCOUNT_SEED, COMMUNITY_ACCOUNT_SEED, CONTRACT_STATE_SEED, LIQUIDITY_ACCOUNT_SEED,
+    MARKETING_ACCOUNT_SEED, MINT_SEED, PARTNERSHIP_ACCOUNT_SEED, PROGRAM_ACCOUNT_SEED,
+    VESTING_STATE_SEED,
+};
 
 /// The discriminator is defined by the first 8 bytes of the SHA256 hash of the account's Rust identifier.
 /// It includes the name of struct type and lets Anchor know what type of account it should deserialize the data as.
@@ -206,6 +218,24 @@ pub struct BurnContext<'info> {
     )]
     pub burning_account: Box<Account<'info, TokenAccount>>,
     pub token_program: Program<'info, Token>,
+}
+
+/// Context for the change_authority instruction.
+///
+/// This context is used to set new authority on contract state.
+///
+/// The context includes:
+/// - `contract_state` - the account that contains the contract state,
+/// - `signer` - the signer of the transaction which must be the contract's owner.
+#[derive(Accounts)]
+pub struct ChangeAuthorityContext<'info> {
+    #[account(
+        mut,
+        seeds = [CONTRACT_STATE_SEED.as_bytes()],
+        bump = contract_state.contract_state_nonce,
+    )]
+    pub contract_state: Box<Account<'info, ContractState>>,
+    pub signer: Signer<'info>,
 }
 
 /// Context for the withdraw_tokens_from_community_wallet instruction.

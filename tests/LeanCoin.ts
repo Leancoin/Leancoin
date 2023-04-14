@@ -1403,5 +1403,59 @@ describe("LeanCoin", () => {
                 );
             }
         });
+
+        it("Pass change Authority", async () => {
+            let new_authority = new PublicKey(
+                "11111111111111111111111111111111",
+            );
+
+            let contract_state_account = await program.account.contractState.fetch(
+                contract_state_address,
+            );
+
+            assert.equal(
+                contract_state_account.authority.toBase58(),
+                provider.wallet.publicKey.toBase58(),
+            );
+
+            await program.methods
+                .changeAuthority(new_authority)
+                .accounts({
+                    contractState: contract_state_address,
+                    signer: provider.wallet.publicKey,
+                })
+                .rpc();
+
+            contract_state_account = await program.account.contractState.fetch(
+                contract_state_address,
+            );
+
+            assert.equal(
+                contract_state_account.authority.toBase58(),
+                new_authority.toBase58(),
+            );
+        });
+
+        it("Fail set change Authority", async () => {
+            let new_authority = new PublicKey(
+                "11111111111111111111111111111111",
+            );
+
+            try {
+                await program.methods
+                    .changeAuthority(new_authority)
+                    .accounts({
+                        contractState: contract_state_address,
+                        signer: new_authority,
+                    })
+                    .rpc();
+
+            } catch (err) {
+                assert.equal(
+                    err.message,
+                    "Signature verification failed",
+                );
+            }
+        });
     });
 });

@@ -1,9 +1,9 @@
-use anchor_lang::prelude::*;
+use anchor_lang::prelude::{require, AccountInfo, Context, CpiContext, Result, ToAccountInfo};
 use anchor_spl::token::{self, Burn, MintTo, Transfer};
 
 use crate::account::ContractState;
 use crate::context::VestedWalletContext;
-use crate::error::LeancoinError;
+use crate::error_codes::LeancoinError;
 
 use crate::{MINT_SEED, PROGRAM_ACCOUNT_SEED};
 
@@ -170,9 +170,6 @@ pub struct DateTime {
     pub year: i64,
     pub month: u8,
     pub days: u8,
-    pub hours: u8,
-    pub minutes: u8,
-    pub seconds: u8,
 }
 
 /// Accepts the timestamp as an integer (i64) and returns DateTime struct
@@ -186,25 +183,18 @@ pub struct DateTime {
 pub fn parse_timestamp(timestamp: i64) -> Result<DateTime> {
     require!(timestamp >= 0, LeancoinError::InvalidTimestamp);
 
-    let mut time = timestamp;
-    let seconds = time % 60;
-    time /= 60;
-    let minutes = time % 60;
-    time /= 60;
-    let hours = time % 24;
-    time /= 24;
-
-    let mut days = time;
+    let mut days = timestamp / (60 * 60 * 24);
     let mut year = 1970;
-    let mut month = 0;
-    let month_days = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut month = 1;
+    let month_days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
     while days >= 365 {
         if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) {
             if days >= 366 {
                 days -= 366;
                 year += 1;
-                continue;
+            } else {
+                break;
             }
         } else {
             days -= 365;
@@ -212,12 +202,12 @@ pub fn parse_timestamp(timestamp: i64) -> Result<DateTime> {
         }
     }
 
+    let is_leap_year = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
     while month < 12 {
-        let is_leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
-        let month_length = if month == 2 && is_leap {
+        let month_length = if month == 2 && is_leap_year {
             29
         } else {
-            month_days[month]
+            month_days[month - 1]
         };
 
         if days < month_length {
@@ -226,32 +216,24 @@ pub fn parse_timestamp(timestamp: i64) -> Result<DateTime> {
         days -= month_length;
         month += 1;
     }
+    days += 1;
 
-    let (month, days, hours, minutes, seconds) = match (
-        u8::try_from(month),
-        u8::try_from(days),
-        u8::try_from(hours),
-        u8::try_from(minutes),
-        u8::try_from(seconds),
-    ) {
-        (Ok(month), Ok(days), Ok(hours), Ok(minutes), Ok(seconds)) => {
-            (month, days + 1, hours, minutes, seconds)
-        }
-        // no chance to happen but added for the safety reasons
-        _ => return Err(LeancoinError::CannotConvertToU8.into()),
-    };
+    let month: u8 = month.try_into().unwrap();
+    let days: u8 = days.try_into().unwrap();
 
-    Ok(DateTime {
-        year,
-        month,
-        days,
-        hours,
-        minutes,
-        seconds,
-    })
+    Ok(DateTime { year, month, days })
 }
 
-/// Calculates the number of full months between two timestamps.
+/// Calculates the number of months between two timestamps.
+/// Only month numbers are compared, days are ignored.
+///
+/// Examples:
+/// - when start date is 01/04/2023 and end date is 01/05/2023, then the result is 1
+/// - when start date is 27/04/2023 and end date is 01/05/2023, then the result is 1
+/// - when start date is 01/04/2023 and end date is 01/06/2023, then the result is 2
+/// - when start date is 27/04/2023 and end date is 01/06/2023, then the result is 2
+/// - when start date is 27/04/2023 and end date is 01/12/2023, then the result is 8
+/// - when start date is 27/04/2023 and end date is 01/04/2024, then the result is 12
 ///
 /// ### Arguments
 ///
@@ -259,20 +241,20 @@ pub fn parse_timestamp(timestamp: i64) -> Result<DateTime> {
 /// * `end` - the later timestamp
 ///
 /// ### Returns
-/// Number of full months between two timestamps.
+/// Number of months between two timestamps, ignoring days.
 pub fn calculate_month_difference(start: i64, end: i64) -> Result<u64> {
+    require!(end >= start, LeancoinError::EndTimeMustBeLaterThanStartTime);
     let start = parse_timestamp(start)?;
     let end = parse_timestamp(end)?;
 
-    let month_difference = i64::try_from(end.month - start.month);
-    let month_difference = match month_difference {
-        Ok(month_difference) => month_difference,
-        // no chance to happen but added for the safety reasons
-        Err(_) => return Err(LeancoinError::CannotConvertToI64.into()),
-    };
+    let end_month: i64 = end.month.try_into().unwrap();
+    let start_month: i64 = start.month.try_into().unwrap();
 
+    let month_difference = end_month - start_month;
     let months = (end.year - start.year) * 12 + month_difference;
-    Ok(months.unsigned_abs())
+    let months = months.try_into().unwrap();
+
+    Ok(months)
 }
 
 /// Calculates the amount of unlocked tokens for the partnership wallet.
@@ -316,33 +298,22 @@ pub fn calculate_unlocked_amount_marketing_wallet(
         return Ok(0);
     }
 
-    let (vesting_start_account_balance, months_since_vesting_start) = match (
-        u128::try_from(vesting_start_account_balance),
-        u128::try_from(months_since_vesting_start),
-    ) {
-        (Ok(vesting_start_account_balance), Ok(months_since_vesting_start)) => {
-            (vesting_start_account_balance, months_since_vesting_start)
-        }
-        // no chance to happen but added for the safety reasons
-        _ => return Err(LeancoinError::CannotConvertToU128.into()),
-    };
+    let (vesting_start_account_balance, months_since_vesting_start) = (
+        u128::from(vesting_start_account_balance),
+        u128::from(months_since_vesting_start),
+    );
 
-    let amount_unlocked_after_one_year = vesting_start_account_balance * 40 / 100;
-    let amount_unlocked_every_month_after_one_year = vesting_start_account_balance * 5 / 100;
-    let amount_unlocked = amount_unlocked_after_one_year
-        + ((months_since_vesting_start - 12) * amount_unlocked_every_month_after_one_year);
+    let amount_unlocked = (vesting_start_account_balance * 40
+        + (months_since_vesting_start - 12) * (vesting_start_account_balance * 5))
+        / 100;
 
-    match u64::try_from(amount_unlocked.max(1).min(vesting_start_account_balance)) {
-        Ok(amount_unlocked) => Ok(amount_unlocked),
-        // no chance to happen but added for the safety reasons
-        _ => return Err(LeancoinError::CannotConvertToU64.into()),
-    }
+    Ok(u64::try_from(amount_unlocked.max(1).min(vesting_start_account_balance)).unwrap())
 }
 
 /// Calculates the amount of unlocked tokens for the community wallet.
 /// 2.5% of the initial wallet's balance is unlocked immediately.
 /// Additional 2.5% of the initial wallet's balance is unlocked every month.
-/// So after 2 months: 5% of the initial balance is unlocked, after 3 months: 7.5%, after months: 10% etc.
+/// So after 2 months: 7.5% of the initial balance is unlocked, after 3 months: 10%, after 4 months: 12.5% etc.
 ///
 /// ### Arguments
 ///
@@ -355,7 +326,7 @@ pub fn calculate_unlocked_amount_community_wallet(
     vesting_start_account_balance: u64,
     months_since_vesting_start: u64,
 ) -> u64 {
-    let amount_unlocked = vesting_start_account_balance / 40 * (months_since_vesting_start + 1);
+    let amount_unlocked = vesting_start_account_balance * (months_since_vesting_start + 1) / 40;
 
     amount_unlocked.max(1).min(vesting_start_account_balance)
 }
@@ -425,18 +396,14 @@ where
 mod test {
 
     use super::*;
+    use anchor_lang::prelude::Pubkey;
     use std::cell::RefCell;
     use std::rc::Rc;
     use test_case::test_case;
 
     impl PartialEq for DateTime {
         fn eq(&self, other: &Self) -> bool {
-            self.year == other.year
-                && self.month == other.month
-                && self.days == other.days
-                && self.hours == other.hours
-                && self.minutes == other.minutes
-                && self.seconds == other.seconds
+            self.year == other.year && self.month == other.month && self.days == other.days
         }
     }
 
@@ -446,9 +413,6 @@ mod test {
                 .field("year", &self.year)
                 .field("month", &self.month)
                 .field("days", &self.days)
-                .field("hours", &self.hours)
-                .field("minutes", &self.minutes)
-                .field("seconds", &self.seconds)
                 .finish()
         }
     }
@@ -485,14 +449,20 @@ mod test {
         }
     }
 
-    #[test_case( 0, DateTime { year: 1970, month: 1, days: 1, hours: 0, minutes: 0, seconds: 0 }; "timestamp 0")]
-    #[test_case( 162000, DateTime { year: 1970, month: 1, days: 2, hours: 21, minutes: 0, seconds: 0 }; "timestamp 162000")]
-    #[test_case( 1620000000, DateTime { year: 2021, month: 5, days: 3, hours: 0, minutes: 0, seconds: 0 }; "timestamp 1620000000")]
-    #[test_case( 1620002137, DateTime { year: 2021, month: 5, days: 3, hours: 0, minutes: 35, seconds: 37 }; "timestamp 1620002137")]
-    #[test_case( 1378183924, DateTime { year: 2013, month: 9, days: 3, hours: 4, minutes: 52, seconds: 4 }; "timestamp 1378183924")]
-    #[test_case( 959249016, DateTime { year: 2000, month: 5, days: 25, hours: 10, minutes: 3, seconds: 36 }; "timestamp 959249016")]
-    #[test_case( 1336937134, DateTime { year: 2012, month: 5, days: 13, hours: 19, minutes: 25, seconds: 34 }; "timestamp 1336937134")]
-    #[test_case( 1836183646,  DateTime { year: 2028, month: 3, days: 9, hours: 3, minutes: 0, seconds: 46 }; "timestamp 1836183646")]
+    #[test_case( 0, DateTime { year: 1970, month: 1, days: 1 }; "timestamp 0")]
+    #[test_case( 162000, DateTime { year: 1970, month: 1, days: 2 }; "timestamp 162000")]
+    #[test_case( 94694400, DateTime { year: 1973, month: 1, days: 1 }; "timestamp 94694400")]
+    #[test_case( 2678400, DateTime { year: 1970, month: 2, days: 1 }; "timestamp 2678400")]
+    #[test_case( 5097600, DateTime { year: 1970, month: 3, days: 1 }; "timestamp 5097600")]
+    #[test_case( 68256000, DateTime { year: 1972, month: 3, days: 1 }; "timestamp 68256000")]
+    #[test_case( 220838400, DateTime { year: 1976, month: 12, days: 31 }; "timestamp 220838400")]
+    #[test_case( 1620000000, DateTime { year: 2021, month: 5, days: 3 }; "timestamp 1620000000")]
+    #[test_case( 1620002137, DateTime { year: 2021, month: 5, days: 3 }; "timestamp 1620002137")]
+    #[test_case( 1378183924, DateTime { year: 2013, month: 9, days: 3 }; "timestamp 1378183924")]
+    #[test_case( 959249016, DateTime { year: 2000, month: 5, days: 25 }; "timestamp 959249016")]
+    #[test_case( 1336937134, DateTime { year: 2012, month: 5, days: 13 }; "timestamp 1336937134")]
+    #[test_case( 1836183646,  DateTime { year: 2028, month: 3, days: 9 }; "timestamp 1836183646")]
+    #[test_case( 1641052800,  DateTime { year: 2022, month: 1, days: 1 }; "timestamp 1641052800")]
     fn test_parse_timestamp(timestamp: i64, expected: DateTime) {
         let parsed_timestamp = parse_timestamp(timestamp).unwrap();
         assert_eq!(parsed_timestamp, expected);
@@ -504,17 +474,23 @@ mod test {
         assert!(parsed_timestamp.is_err());
     }
 
-    #[test_case( 1620000000, 1620000000, 0; "same month")]
-    #[test_case( 1620000000, 1620000000 + 60 * 60 * 24 * 31, 1; "1 month")]
-    #[test_case( 1620000000, 1620000000 + 60 * 60 * 24 * 31 * 2, 2; "2 months")]
-    #[test_case( 1620000000, 1620000000 + 60 * 60 * 24 * 31 * 3, 3; "3 months")]
-    #[test_case( 1620000000, 1620000000 + 60 * 60 * 24 * 31 * 12, 12; "12 months")]
+    #[test_case( 1620000000, 1620000000 + 60 * 60 * 24 * 15, 0; "start = 03/05/21, end = 18/05/21, same month")]
+    #[test_case( 1620000000, 1620000000, 0; "start = 03/05/21, end = 03/05/21, same month")]
+    #[test_case( 1620000000, 1620000000 + 60 * 60 * 24 * 31 - (2 * 24 * 60 * 60), 1; "start = 03/05/21, end = 01/06/21, 1 month")]
+    #[test_case( 1620000000, 1620000000 + 60 * 60 * 24 * 31, 1; "start = 03/05/21, end = 03/06/21, 1 month")]
+    #[test_case( 1620000000 + 60 * 60 * 24 * 15, 1620000000 + 60 * 60 * 24 * 30, 1; "start = 18/05/21, end = 02/06/21, 1 month")]
+    #[test_case( 1620000000, 1620000000 + 60 * 60 * 24 * 31 * 2, 2; "start = 03/05/21, end = 04/07/21, 2 months")]
+    #[test_case( 1620000000, 1620000000 + 60 * 60 * 24 * 31 * 3, 3; "start = 03/05/21, end = 04/08/21, 3 months")]
+    #[test_case( 1620000000, 1620000000 + 60 * 60 * 24 * 31 * 11, 11; "start = 03/05/21, end = 09/04/22, 11 months")]
+    #[test_case( 1620000000, 1620000000 + 60 * 60 * 24 * 31 * 12, 12; "start = 03/05/21, end = 10/05/22, 12 months")]
+    #[test_case( 1620000000, 1620000000 + 60 * 60 * 24 * 31 * 13, 13; "start = 03/05/21, end = 10/06/22, 13 months")]
+
     fn test_calculate_month_difference(start: i64, end: i64, expected: u64) {
         let months_since_vesting_start = calculate_month_difference(start, end).unwrap();
         assert_eq!(months_since_vesting_start, expected);
     }
 
-    #[test_case(1000000000, 0, 0; "0 month")]
+    #[test_case(1000000000, 0, 0; "0 months")]
     #[test_case(1000000000, 1, 500000000; "1 month")]
     #[test_case(1000000000, 2, 1000000000; "2 months")]
     #[test_case(1000000000, 3, 1000000000; "3 months")]

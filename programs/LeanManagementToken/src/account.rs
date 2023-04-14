@@ -1,4 +1,7 @@
-use anchor_lang::prelude::*;
+use anchor_lang::{
+    prelude::{account, borsh, AnchorDeserialize, AnchorSerialize, InitSpace},
+    solana_program::pubkey::Pubkey,
+};
 
 /// The account that holds the state of the contract.
 /// It is initialized only once during contract initialization.

@@ -1,12 +1,12 @@
-use anchor_lang::prelude::*;
+use anchor_lang::prelude::error_code;
 
 /// The enum defining all errors used by the contract.
 #[error_code]
 pub enum LeancoinError {
     #[msg("You are not an owner")]
     Unauthorized = 0,
-    #[msg("Cannot get the bump.")]
-    CannotGetBump = 1,
+    #[msg("End time must be later than start time")]
+    EndTimeMustBeLaterThanStartTime = 1,
     #[msg("Ethereum token state mapping already performed")]
     EthereumTokenStateMappingAlreadyPerformed = 2,
     #[msg("Account from remaining accounts not found in user info")]
@@ -17,26 +17,28 @@ pub enum LeancoinError {
     TokensAlreadyBurned = 5,
     #[msg("Not enough tokens to withdraw")]
     NotEnoughTokens = 6,
-    #[msg("User duplicated in user info")]
-    UserDuplicatedInUserInfo = 7,
+    #[msg("Account info must be unique")]
+    NonUniqueAccountInfo = 7,
+    #[msg("Wallet name must be unique")]
+    DuplicatedWalletName = 8,
     #[msg("Program account balance is not zero")]
-    ProgramAccountBalanceIsNotZero = 8,
+    ProgramAccountBalanceIsNotZero = 9,
     #[msg("Community wallet balance is zero")]
-    CommunityWalletBalanceIsZero = 9,
+    CommunityWalletBalanceIsZero = 10,
     #[msg("Partnership wallet balance is zero")]
-    PartnershipWalletBalanceIsZero = 10,
+    PartnershipWalletBalanceIsZero = 11,
     #[msg("Marketing wallet balance is zero")]
-    MarketingWalletBalanceIsZero = 11,
+    MarketingWalletBalanceIsZero = 12,
     #[msg("Liquidity wallet balance is zero")]
-    LiquidityWalletBalanceIsZero = 12,
+    LiquidityWalletBalanceIsZero = 13,
     #[msg("Cannot convert to i64")]
-    CannotConvertToI64 = 13,
+    CannotConvertToI64 = 14,
     #[msg("Cannot convert to u8")]
-    CannotConvertToU8 = 14,
+    CannotConvertToU8 = 15,
     #[msg("Invalid timestamp")]
-    InvalidTimestamp = 15,
+    InvalidTimestamp = 16,
     #[msg("Cannot convert to u128")]
-    CannotConvertToU128 = 16,
+    CannotConvertToU128 = 17,
     #[msg("Cannot convert to u64")]
-    CannotConvertToU64 = 17,
+    CannotConvertToU64 = 18,
 }
