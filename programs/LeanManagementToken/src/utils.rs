@@ -283,13 +283,15 @@ pub fn calculate_unlocked_amount_partnership_wallet(
 /// 40% of the initial wallet's balance is unlocked after 1 year.
 /// Starting from the 13th month, 5% of the initial wallet's balance is unlocked every month.
 ///
+/// If the calculated amount is below 1, then 1 is returned as the calculated amount.
+///
 /// ### Arguments
 ///
 /// * `vesting_start_account_balance` - the initial balance of the marketing wallet after Ethereum token state import
 /// * `months_since_vesting_start` - number of full months since the Ethereum token state import
 ///
 /// ### Returns
-/// The amount of unlocked tokens for marketing wallet
+/// The amount of unlocked tokens for marketing wallet but not less than 1
 pub fn calculate_unlocked_amount_marketing_wallet(
     vesting_start_account_balance: u64,
     months_since_vesting_start: u64,
@@ -315,13 +317,15 @@ pub fn calculate_unlocked_amount_marketing_wallet(
 /// Additional 2.5% of the initial wallet's balance is unlocked every month.
 /// So after 2 months: 7.5% of the initial balance is unlocked, after 3 months: 10%, after 4 months: 12.5% etc.
 ///
+/// If the calculated amount is below 1, then 1 is returned as the calculated amount.
+///
 /// ### Arguments
 ///
 /// * `vesting_start_account_balance` - the initial balance of the community wallet after Ethereum token state import
 /// * `months_since_vesting_start` - number of full months since the Ethereum token state import
 ///
 /// ### Returns
-/// The amount of unlocked tokens for community wallet
+/// The amount of unlocked tokens for community wallet but not less than 1
 pub fn calculate_unlocked_amount_community_wallet(
     vesting_start_account_balance: u64,
     months_since_vesting_start: u64,
