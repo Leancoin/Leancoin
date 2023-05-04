@@ -25,3 +25,4 @@ chrono = { version = "0.4.22", default-features = false, features = ["clock"] }
 [dependencies]
 anchor-lang = "0.27.0"
 anchor-spl = "0.27.0"
+winnow = "=0.4.1" # Workaround for issue coming from the current Solana version, more details: https://solana.stackexchange.com/questions/6526/error-package-winnow-v0-4-4-cannot-be-built-because-it-requires-rustc-1-64-0/6535

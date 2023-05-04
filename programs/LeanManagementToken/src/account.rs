@@ -53,15 +53,19 @@ pub struct VestingState {
 
     pub community_wallet_nonce: u8,
     pub initial_community_wallet_balance: u64,
+    pub already_withdrawn_community_wallet_amount: u64,
 
     pub partnership_wallet_nonce: u8,
     pub initial_partnership_wallet_balance: u64,
+    pub already_withdrawn_partnership_wallet_amount: u64,
 
     pub marketing_wallet_nonce: u8,
     pub initial_marketing_wallet_balance: u64,
+    pub already_withdrawn_marketing_wallet_amount: u64,
 
     pub liquidity_wallet_nonce: u8,
     pub initial_liquidity_wallet_balance: u64,
+    pub already_withdrawn_liquidity_wallet_amount: u64,
 
     pub start_timestamp: i64,
 }

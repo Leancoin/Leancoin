@@ -5,7 +5,7 @@ The documentation can be found here: https://docs.leancoin.io/swap-lean/
 Leancoin requires some dependencies to be built and deployed.
 
 Dependencies required to build and deploy Leancoin program:
-- Rust 1.6 or higher
+- Rust 1.66.0 or higher
 - Solana CLI 1.14.7
 - Anchor 0.27.0
 

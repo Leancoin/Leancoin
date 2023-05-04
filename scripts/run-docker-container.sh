@@ -8,13 +8,14 @@
 
 SOLANA_VERSION="1.14.7"
 ANCHOR_VERSION="0.27.0"
+RUST_VERSION="1.66.0"
 IMAGE_TAG="leancoin:1.0"
 CONTAINER_NAME="leancoin"
 
 build_docker_container () {
   echo "Building Docker image with Leancoin..."
   set -e
-  docker build --build-arg ANCHOR_VERSION=$ANCHOR_VERSION --build-arg SOLANA_VERSION=$SOLANA_VERSION -t $IMAGE_TAG -f Dockerfile ../
+  docker build --build-arg ANCHOR_VERSION=$ANCHOR_VERSION --build-arg SOLANA_VERSION=$SOLANA_VERSION --build-arg RUST_VERSION=$RUST_VERSION -t $IMAGE_TAG -f Dockerfile ../
   set +e
 
   echo "Leancoin Docker image built successfuly"

@@ -92,6 +92,11 @@ pub mod leancoin {
         vesting_state.initial_marketing_wallet_balance = 0;
         vesting_state.initial_liquidity_wallet_balance = 0;
 
+        vesting_state.already_withdrawn_community_wallet_amount = 0;
+        vesting_state.already_withdrawn_partnership_wallet_amount = 0;
+        vesting_state.already_withdrawn_marketing_wallet_amount = 0;
+        vesting_state.already_withdrawn_liquidity_wallet_amount = 0;
+
         vesting_state.vesting_state_nonce = vesting_state_nonce;
         vesting_state.community_wallet_nonce = community_wallet_nonce;
         vesting_state.liquidity_wallet_nonce = liquidity_wallet_nonce;
@@ -279,15 +284,14 @@ pub mod leancoin {
             vesting_state.initial_community_wallet_balance,
             months_since_first_vesting,
         );
-        let already_withdrawn_amount =
-            vesting_state.initial_community_wallet_balance - ctx.accounts.community_account.amount;
 
         let amount_available_to_withdraw = ctx
             .accounts
             .community_account
             .amount
-            .min(unlocked_amount - already_withdrawn_amount);
+            .min(unlocked_amount - vesting_state.already_withdrawn_community_wallet_amount);
 
+        vesting_state.already_withdrawn_community_wallet_amount += amount_to_withdraw;
         withdraw_vested_tokens(ctx, amount_to_withdraw, amount_available_to_withdraw)?;
 
         Ok(())
@@ -315,15 +319,14 @@ pub mod leancoin {
             vesting_state.initial_partnership_wallet_balance,
             months_since_first_vesting,
         );
-        let already_withdrawn_amount = vesting_state.initial_partnership_wallet_balance
-            - ctx.accounts.partnership_account.amount;
 
         let amount_available_to_withdraw = ctx
             .accounts
             .partnership_account
             .amount
-            .min(unlocked_amount - already_withdrawn_amount);
+            .min(unlocked_amount - vesting_state.already_withdrawn_partnership_wallet_amount);
 
+        vesting_state.already_withdrawn_partnership_wallet_amount += amount_to_withdraw;
         withdraw_vested_tokens(ctx, amount_to_withdraw, amount_available_to_withdraw)?;
 
         Ok(())
@@ -351,15 +354,14 @@ pub mod leancoin {
             vesting_state.initial_marketing_wallet_balance,
             months_since_first_vesting,
         )?;
-        let already_withdrawn_amount =
-            vesting_state.initial_marketing_wallet_balance - ctx.accounts.marketing_account.amount;
 
         let amount_available_to_withdraw = ctx
             .accounts
             .marketing_account
             .amount
-            .min(unlocked_amount - already_withdrawn_amount);
+            .min(unlocked_amount - vesting_state.already_withdrawn_marketing_wallet_amount);
 
+        vesting_state.already_withdrawn_marketing_wallet_amount += amount_to_withdraw;
         withdraw_vested_tokens(ctx, amount_to_withdraw, amount_available_to_withdraw)?;
 
         Ok(())
@@ -387,15 +389,14 @@ pub mod leancoin {
             vesting_state.initial_liquidity_wallet_balance,
             months_since_first_vesting,
         );
-        let already_withdrawn_amount =
-            vesting_state.initial_liquidity_wallet_balance - ctx.accounts.liquidity_account.amount;
 
         let amount_available_to_withdraw = ctx
             .accounts
             .liquidity_account
             .amount
-            .min(unlocked_amount - already_withdrawn_amount);
+            .min(unlocked_amount - vesting_state.already_withdrawn_liquidity_wallet_amount);
 
+        vesting_state.already_withdrawn_liquidity_wallet_amount += amount_to_withdraw;
         withdraw_vested_tokens(ctx, amount_to_withdraw, amount_available_to_withdraw)?;
 
         Ok(())
@@ -818,12 +819,19 @@ mod tests {
 
     #[tokio::test]
     #[should_panic]
-    async fn test_burn() {
+    async fn test_burn_after_5th_day_of_month_fails() {
         let program_id = id();
         let mut program_test = ProgramTest::new("leancoin", program_id, processor!(entry));
         program_test.set_compute_max_units(500000);
+        let mut program_test_context = program_test.start_with_context().await;
 
-        let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+        //  Monday, 6 March 2023 01:01:01
+        let time_in_timestamp = 1678064461;
+        set_time(&mut program_test_context, time_in_timestamp).await;
+
+        let mut banks_client = program_test_context.banks_client;
+        let payer = program_test_context.payer;
+        let recent_blockhash = program_test_context.last_blockhash;
 
         initialize_instruction(&mut banks_client, &payer, recent_blockhash)
             .await
@@ -838,7 +846,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_burn_change_clock() {
+    async fn test_burn_on_5th_day_of_month_succeeds() {
         let program_id = id();
         let mut program_test = ProgramTest::new("leancoin", program_id, processor!(entry));
         program_test.set_compute_max_units(500000);
@@ -851,9 +859,6 @@ mod tests {
         let mut banks_client = program_test_context.banks_client;
         let payer = program_test_context.payer;
         let recent_blockhash = program_test_context.last_blockhash;
-
-        let mut sub_clock = Clock::default();
-        sub_clock.unix_timestamp += 2_160_000;
 
         initialize_instruction(&mut banks_client, &payer, recent_blockhash)
             .await

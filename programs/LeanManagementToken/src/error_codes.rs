@@ -31,14 +31,6 @@ pub enum LeancoinError {
     MarketingWalletBalanceIsZero = 12,
     #[msg("Liquidity wallet balance is zero")]
     LiquidityWalletBalanceIsZero = 13,
-    #[msg("Cannot convert to i64")]
-    CannotConvertToI64 = 14,
-    #[msg("Cannot convert to u8")]
-    CannotConvertToU8 = 15,
     #[msg("Invalid timestamp")]
-    InvalidTimestamp = 16,
-    #[msg("Cannot convert to u128")]
-    CannotConvertToU128 = 17,
-    #[msg("Cannot convert to u64")]
-    CannotConvertToU64 = 18,
+    InvalidTimestamp = 14,
 }

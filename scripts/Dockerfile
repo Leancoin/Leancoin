@@ -3,6 +3,7 @@ FROM debian:bullseye-slim
 WORKDIR /usr/src/app
 ARG SOLANA_VERSION
 ARG ANCHOR_VERSION
+ARG RUST_VERSION
 
 ### Install Required Packages ###
 RUN apt update
@@ -13,6 +14,8 @@ RUN curl --proto '=https' --tlsv1.2 -sSf "https://sh.rustup.rs" | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 RUN ["/bin/bash", "-c", "source $HOME/.cargo/env"]
 RUN rustup component add rustfmt
+RUN rustup install $RUST_VERSION
+RUN rustup default $RUST_VERSION
 
 ### Install Solana ###
 RUN sh -c "$(curl -sSfL https://release.solana.com/v${SOLANA_VERSION}/install)"
@@ -37,7 +40,7 @@ RUN avm install $ANCHOR_VERSION
 RUN avm use $ANCHOR_VERSION
 
 ### Copy Leancoin to Docker ###
-COPY Anchor.toml Cargo.toml package.json tsconfig.json .env .
+COPY Anchor.toml Cargo.toml rust-toolchain.toml package.json tsconfig.json .env .
 COPY programs programs
 COPY tests tests
 

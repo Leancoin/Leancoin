@@ -7,6 +7,9 @@ use crate::error_codes::LeancoinError;
 
 use crate::{MINT_SEED, PROGRAM_ACCOUNT_SEED};
 
+/// DAYS_PER_MONTH is an array of integers that contains the number of days for each month, excluding December
+const DAYS_PER_MONTH: [i64; 11] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30];
+
 /// Transfers tokens between two accounts.
 ///
 /// ### Arguments
@@ -20,11 +23,11 @@ use crate::{MINT_SEED, PROGRAM_ACCOUNT_SEED};
 ///
 /// ### Returns
 /// The result of the transfer
-pub fn transfer_tokens<'a, 'b>(
+pub fn transfer_tokens<'a>(
     authority: AccountInfo<'a>,
     to: AccountInfo<'a>,
     program_account: AccountInfo<'a>,
-    program_account_seed: &'b str,
+    program_account_seed: &str,
     program_account_nonce: u8,
     amount: u64,
 ) -> Result<()> {
@@ -183,45 +186,59 @@ pub struct DateTime {
 pub fn parse_timestamp(timestamp: i64) -> Result<DateTime> {
     require!(timestamp >= 0, LeancoinError::InvalidTimestamp);
 
-    let mut days = timestamp / (60 * 60 * 24);
+    let mut remaining_days = timestamp / (60 * 60 * 24);
     let mut year = 1970;
     let mut month = 1;
-    let month_days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
-    while days >= 365 {
-        if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) {
-            if days >= 366 {
-                days -= 366;
+    while remaining_days >= 365 {
+        if is_leap_year(year) {
+            if remaining_days >= 366 {
+                remaining_days -= 366;
                 year += 1;
             } else {
                 break;
             }
         } else {
-            days -= 365;
+            remaining_days -= 365;
             year += 1;
         }
     }
 
-    let is_leap_year = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let leap_year = is_leap_year(year);
     while month < 12 {
-        let month_length = if month == 2 && is_leap_year {
+        let month_length = if month == 2 && leap_year {
             29
         } else {
-            month_days[month - 1]
+            DAYS_PER_MONTH[month - 1]
         };
 
-        if days < month_length {
+        if remaining_days < month_length {
             break;
         }
-        days -= month_length;
+        remaining_days -= month_length;
         month += 1;
     }
-    days += 1;
+    remaining_days += 1;
 
     let month: u8 = month.try_into().unwrap();
-    let days: u8 = days.try_into().unwrap();
+    let days: u8 = remaining_days.try_into().unwrap();
 
     Ok(DateTime { year, month, days })
+}
+
+/// Checks whether the given year is a leap year.
+///
+/// A year is a leap year if it is divisible by 4 and not by 100, or if it is
+/// divisible by 400. For example, 1992 and 1996 are leap years, but 1900 is not.
+///
+/// ### Arguments
+///
+/// * `year` - the year to be checked
+///
+/// ### Returns
+/// True if the provided year is a leap year, false otherwise.
+fn is_leap_year(year: i64) -> bool {
+    year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
 }
 
 /// Calculates the number of months between two timestamps.
@@ -330,9 +347,13 @@ pub fn calculate_unlocked_amount_community_wallet(
     vesting_start_account_balance: u64,
     months_since_vesting_start: u64,
 ) -> u64 {
+    let (vesting_start_account_balance, months_since_vesting_start) = (
+        u128::from(vesting_start_account_balance),
+        u128::from(months_since_vesting_start),
+    );
     let amount_unlocked = vesting_start_account_balance * (months_since_vesting_start + 1) / 40;
 
-    amount_unlocked.max(1).min(vesting_start_account_balance)
+    u64::try_from(amount_unlocked.max(1).min(vesting_start_account_balance)).unwrap()
 }
 
 /// Calculates the amount of unlocked tokens for the liquidity wallet.
@@ -459,7 +480,10 @@ mod test {
     #[test_case( 2678400, DateTime { year: 1970, month: 2, days: 1 }; "timestamp 2678400")]
     #[test_case( 5097600, DateTime { year: 1970, month: 3, days: 1 }; "timestamp 5097600")]
     #[test_case( 68256000, DateTime { year: 1972, month: 3, days: 1 }; "timestamp 68256000")]
+    #[test_case( 31449600, DateTime { year: 1970, month: 12, days: 31 }; "timestamp 31449600")]
     #[test_case( 220838400, DateTime { year: 1976, month: 12, days: 31 }; "timestamp 220838400")]
+    #[test_case( 978220800, DateTime { year: 2000, month: 12, days: 31 }; "timestamp 978220800")]
+    #[test_case( 1609335304, DateTime { year: 2020, month: 12, days: 30 }; "timestamp 1609335304" )]
     #[test_case( 1620000000, DateTime { year: 2021, month: 5, days: 3 }; "timestamp 1620000000")]
     #[test_case( 1620002137, DateTime { year: 2021, month: 5, days: 3 }; "timestamp 1620002137")]
     #[test_case( 1378183924, DateTime { year: 2013, month: 9, days: 3 }; "timestamp 1378183924")]
@@ -476,6 +500,13 @@ mod test {
     fn test_parse_timestamp_error() {
         let parsed_timestamp = parse_timestamp(-1);
         assert!(parsed_timestamp.is_err());
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_parse_timestamp_negative() {
+        let timestamp: i64 = -1;
+        parse_timestamp(timestamp).unwrap();
     }
 
     #[test_case( 1620000000, 1620000000 + 60 * 60 * 24 * 15, 0; "start = 03/05/21, end = 18/05/21, same month")]
@@ -560,6 +591,7 @@ mod test {
     #[test_case(1, 38, 1; "38 months with 1 token - one token unlocked")]
     #[test_case(1, 39, 1; "39 months with 1 token - one token unlocked")]
     #[test_case(1, 100, 1; "100 months with 1 token - one token unlocked")]
+    #[test_case(1000000000000000000, 100, 1000000000000000000; "100 months with 1000000000000000000 token - 1000000000000000000 token unlocked")]
     fn test_calculate_unlocked_amount_community_wallet(
         vesting_start_account_balance: u64,
         months_since_vesting_start: u64,

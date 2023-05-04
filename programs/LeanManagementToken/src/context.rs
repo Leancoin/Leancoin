@@ -63,7 +63,7 @@ pub struct InitializeContext<'info> {
     )]
     pub vesting_state: Box<Account<'info, VestingState>>,
     #[account(
-        init, 
+        init,
         payer = signer,
         seeds = [MINT_SEED.as_bytes()],
         bump,
@@ -212,7 +212,7 @@ pub struct BurnContext<'info> {
     )]
     pub contract_state: Box<Account<'info, ContractState>>,
     #[account(
-        mut, 
+        mut,
         seeds = [BURNING_ACCOUNT_SEED.as_bytes()],
         bump = contract_state.burning_account_nonce,
     )]
@@ -265,7 +265,7 @@ pub struct WithdrawTokensFromCommunityWalletContext<'info> {
     pub vesting_state: Box<Account<'info, VestingState>>,
 
     #[account(
-        mut, 
+        mut,
         seeds = [COMMUNITY_ACCOUNT_SEED.as_bytes()],
         bump,
     )]
