@@ -33,7 +33,7 @@ const PARTNERSHIP_ACCOUNT_SEED: &str = "partnership_account";
 const MARKETING_ACCOUNT_SEED: &str = "marketing_account";
 const LIQUIDITY_ACCOUNT_SEED: &str = "liquidity_account";
 
-declare_id!("22pbN7DT5e5b7E8HFQWeTtBhZWDY1tuYaGwxVbx99mKp");
+declare_id!("EpZhShbcU8uhNVYMrkCQi78LZySewroaTsp8TnaaSrDj");
 
 /// This program is used to mint, burn and transfer tokens. It includes also a vesting mechanism.
 #[program]

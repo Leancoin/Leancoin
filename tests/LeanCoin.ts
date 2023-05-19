@@ -138,10 +138,11 @@ describe("LeanCoin", () => {
         });
 
         it("Initialize token accounts", async () => {
-            amount_token_to_mint = new BN("10000000000000000000");
-            amount_token_to_burn = new BN("1470000000000000000");
+            amount_token_to_mint = new BN("10000000000000000000"); // 100% of total supply
+            amount_token_to_burn = new BN("1800000000000000000"); // 18% of total supply
+            
             const amounts = {
-                burn: new BN("1800000000000000000"), // 18% of total supply
+                burn: new BN("1470000000000000000"), // 14.7% of total supply
                 community: new BN("1000000000000000000"), // 10% of total supply
                 partnership: new BN("2000000000000000000"), // 20% of total supply
                 marketing: new BN("1500000000000000000"), // 15% of total supply
@@ -181,11 +182,12 @@ describe("LeanCoin", () => {
             await connection.requestAirdrop(swap_keypair.publicKey, 1e9);
 
             // Swap account
+            let swapWalletAddress = new PublicKey("C6e1k59aGNRQKkW3UgVPkr1RGcq3w8twzZGDTrtxP9wj");
             let swapWalletAssociatedTokenAccount =
                 await getOrCreateAssociatedTokenAccount(
                     provider,
                     mint,
-                    provider.wallet.publicKey,
+                    swapWalletAddress,
                     connection,
                 );
 
@@ -269,7 +271,7 @@ describe("LeanCoin", () => {
                     burning_account_address,
                 );
             assert(
-                burning_account_balance.value.amount == "1800000000000000000",
+                burning_account_balance.value.amount == "1470000000000000000",
             );
             let liquidity_account_balance =
                 await connection.getTokenAccountBalance(
@@ -1405,9 +1407,7 @@ describe("LeanCoin", () => {
         });
 
         it("Pass change Authority", async () => {
-            let new_authority = new PublicKey(
-                "11111111111111111111111111111111",
-            );
+            let new_authority = new PublicKey("4mnqVZUSLecX7DvGqDG1KhxRWo87NCfA21v3UkAzLx55");
 
             let contract_state_account = await program.account.contractState.fetch(
                 contract_state_address,
