@@ -3,13 +3,13 @@ seeds = false
 skip-lint = false
 
 [programs.localnet]
-leancoin = "EpZhShbcU8uhNVYMrkCQi78LZySewroaTsp8TnaaSrDj"
+leancoin = "CeFVa5iijJASnRmMCvrHep8wVYRZ3XxAmgXArNJhpjmx"
 [programs.devnet]
-leancoin = "EpZhShbcU8uhNVYMrkCQi78LZySewroaTsp8TnaaSrDj"
+leancoin = "CeFVa5iijJASnRmMCvrHep8wVYRZ3XxAmgXArNJhpjmx"
 [programs.testnet]
-leancoin = "EpZhShbcU8uhNVYMrkCQi78LZySewroaTsp8TnaaSrDj"
+leancoin = "CeFVa5iijJASnRmMCvrHep8wVYRZ3XxAmgXArNJhpjmx"
 [programs.mainnet]
-leancoin = "EpZhShbcU8uhNVYMrkCQi78LZySewroaTsp8TnaaSrDj"
+leancoin = "CeFVa5iijJASnRmMCvrHep8wVYRZ3XxAmgXArNJhpjmx"
 
 [registry]
 url = "https://api.apr.dev"
