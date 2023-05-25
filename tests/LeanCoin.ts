@@ -7,6 +7,8 @@ import {
     PublicKey,
     Transaction,
     ComputeBudgetProgram,
+    SYSVAR_RENT_PUBKEY,
+    clusterApiUrl,
 } from "@solana/web3.js";
 
 import bs58 from "bs58";
@@ -16,6 +18,7 @@ import { assert, expect } from "chai";
 import * as dotenv from "dotenv";
 import { findProgramAddress } from "./utils/pda";
 import { getOrCreateAssociatedTokenAccount } from "./utils/accounts";
+import * as mpl from "@metaplex-foundation/mpl-token-metadata";
 import { isBetween1and5 } from './utils/time';
 
 dotenv.config();
@@ -882,8 +885,6 @@ describe("LeanCoin", () => {
             }
         });
 
-
-
         it("Withdraw Tokens From Partnership Wallet 0 tokens", async () => {
             let amount_to_withdraw = new BN(0);
             const tx = await program.methods
@@ -1457,5 +1458,70 @@ describe("LeanCoin", () => {
                 );
             }
         });
+
+        it("Valid metadataPDA", async () => {
+            const seed1 = Buffer.from(anchor.utils.bytes.utf8.encode("metadata"));
+            const seed2 = Buffer.from(mpl.PROGRAM_ID.toBytes());
+            const seed3 = Buffer.from(mint.toBytes());
+            const [metadataPDA, _bump] = PublicKey.findProgramAddressSync([seed1, seed2, seed3], mpl.PROGRAM_ID);
+
+            assert.equal("5f4sGoivDmqsNQVR5msfqGXYDSN1nrrX5x8mXehrYdnQ", metadataPDA.toBase58());
+        });
+
+        it("Pass sets the token metadata create", async () => {
+            if (connection.rpcEndpoint.includes("devnet")) {
+                const seed1 = Buffer.from(anchor.utils.bytes.utf8.encode("metadata"));
+                const seed2 = Buffer.from(mpl.PROGRAM_ID.toBytes());
+                const seed3 = Buffer.from(mint.toBytes());
+                const [metadataPDA, _bump] = PublicKey.findProgramAddressSync([seed1, seed2, seed3], mpl.PROGRAM_ID);
+
+                let name = "Leancoin";
+                let symbol = "LEAN";
+                let uri = "https://gateway.pinata.cloud/ipfs/QmYapT6pjy4YttmyU5AChgX69MG9vSFRyxsX9BuCbwfbuG?_gl=1*1md92uq*rs_ga*ODc0ODg2NzEzLjE2ODQ3ODY1OTQ.*rs_ga_5RMPXG14TE*MTY4NDkzNDAxNS41LjAuMTY4NDkzNDAxNS42MC4wLjA.";
+
+                await program.methods
+                .setTokenMetadata(name, symbol, uri, { create: {} })
+                .accounts({
+                    contractState: contract_state_address,
+                    mint: mint,
+                    signer: provider.wallet.publicKey,
+                    metadataPda: metadataPDA,
+                    systemProgram: anchor.web3.SystemProgram.programId,
+                    tokenProgram: TOKEN_PROGRAM_ID,
+                    metadataProgram: mpl.PROGRAM_ID,
+                })
+                .rpc();
+            } else {
+				console.error("Currently, the cluster is not set to devnet, which prevents the use of metaplex")
+			}
+          });
+
+          it("Pass sets the token metadata update", async () => {
+            if (connection.rpcEndpoint.includes("devnet")) {
+                const seed1 = Buffer.from(anchor.utils.bytes.utf8.encode("metadata"));
+                const seed2 = Buffer.from(mpl.PROGRAM_ID.toBytes());
+                const seed3 = Buffer.from(mint.toBytes());
+                const [metadataPDA, _bump] = PublicKey.findProgramAddressSync([seed1, seed2, seed3], mpl.PROGRAM_ID);
+
+                let name = "Leancoin";
+                let symbol = "LEAN";
+                let uri = "https://gateway.pinata.cloud/ipfs/QmYapT6pjy4YttmyU5AChgX69MG9vSFRyxsX9BuCbwfbuG?_gl=1*1md92uq*rs_ga*ODc0ODg2NzEzLjE2ODQ3ODY1OTQ.*rs_ga_5RMPXG14TE*MTY4NDkzNDAxNS41LjAuMTY4NDkzNDAxNS42MC4wLjA.";
+
+                await program.methods
+                .setTokenMetadata(name, symbol, uri, { update: {} })
+                .accounts({
+                    contractState: contract_state_address,
+                    mint: mint,
+                    signer: provider.wallet.publicKey,
+                    metadataPda: metadataPDA,
+                    systemProgram: anchor.web3.SystemProgram.programId,
+                    tokenProgram: TOKEN_PROGRAM_ID,
+                    metadataProgram: mpl.PROGRAM_ID,
+                })
+                .rpc();
+            } else {
+				console.error("Currently, the cluster is not set to devnet, which prevents the use of metaplex")
+			}
+          });
     });
 });

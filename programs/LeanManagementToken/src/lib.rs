@@ -14,7 +14,7 @@ use anchor_lang::{
         Signer, System, ToAccountInfo,
     },
     program,
-    solana_program::{clock, pubkey::Pubkey, sysvar::Sysvar as SolanaSysvar},
+    solana_program::{clock, pubkey::Pubkey, sysvar::Sysvar as SolanaSysvar, program::invoke_signed},
 };
 use anchor_spl::token::{self, Burn};
 
@@ -38,6 +38,11 @@ declare_id!("CeFVa5iijJASnRmMCvrHep8wVYRZ3XxAmgXArNJhpjmx");
 /// This program is used to mint, burn and transfer tokens. It includes also a vesting mechanism.
 #[program]
 pub mod leancoin {
+    use mpl_token_metadata::{
+        state::DataV2,
+        instruction::{ create_metadata_accounts_v3, update_metadata_accounts_v2 }
+    };
+
     use crate::error_codes::LeancoinError;
     use crate::utils::{
         burn_tokens, calculate_month_difference, calculate_unlocked_amount_community_wallet,
@@ -417,6 +422,96 @@ pub mod leancoin {
 
         Ok(())
     }
+
+    /// Sets new token metadata
+    /// 
+    /// ### Arguments
+    /// 
+    /// * `name` - new token name
+    /// * `symbol` - new token symbol
+    /// * `uri` - new token uri
+    /// * `token_metadata_action` - enum that specifies which token metadata instruction to use
+    #[access_control(valid_owner(&ctx.accounts.contract_state, &ctx.accounts.signer) valid_signer(&ctx.accounts.signer))]
+    pub fn set_token_metadata(
+        ctx: Context<SetTokenMetadataContext>,
+        name: String,
+        symbol: String,
+        uri: String,
+        token_metadata_action: TokenMetadataAction,
+    ) -> Result<()> {
+        let program_id = ctx.accounts.metadata_program.to_account_info();
+        let metadata_pda = ctx.accounts.metadata_pda.to_account_info();
+        let mint = ctx.accounts.mint.to_account_info();
+        let mint_authority = ctx.accounts.mint.to_account_info();
+        let payer = ctx.accounts.signer.to_account_info();
+        let update_authority = ctx.accounts.mint.to_account_info();
+        let system_program = ctx.accounts.system_program.to_account_info();
+
+        let seeds = &[
+            MINT_SEED.as_bytes(),
+            &[ctx.accounts.contract_state.mint_nonce],
+        ];
+
+        let account_infos = &[
+            program_id.clone(),
+            metadata_pda.clone(),
+            mint.clone(),
+            mint_authority.clone(),
+            payer.clone(),
+            update_authority.clone(),
+            system_program.clone()
+        ];
+
+        let create_metadata_accounts_instruction = create_metadata_accounts_v3(
+            *program_id.key,
+            *metadata_pda.key,
+            *mint.key,
+            *mint_authority.key,
+            *payer.key,
+            *update_authority.key,
+            name.clone(),
+            symbol.clone(),
+            uri.clone(),
+            None,
+            0u16,
+            false,
+            true,
+            None,
+            None,
+            None,
+        );
+
+        let data = DataV2 {
+            name,
+            symbol,
+            uri,
+            seller_fee_basis_points: 0u16,
+            creators: None,
+            collection: None,
+            uses: None,
+        };
+        
+        let update_metadata_accounts_instruction = update_metadata_accounts_v2(
+            *program_id.key,
+            *metadata_pda.key,
+            *update_authority.key,
+            Some(*update_authority.key),
+            Some(data),
+            None,
+            Some(true),
+        );
+        
+        match token_metadata_action {
+            TokenMetadataAction::Create => {
+                invoke_signed(&create_metadata_accounts_instruction, account_infos, &[seeds])?;
+            }
+            TokenMetadataAction::Update => {
+                invoke_signed(&update_metadata_accounts_instruction, account_infos, &[seeds])?;
+            }
+        }
+        
+        Ok(())
+    }
 }
 
 /// structure for storing information about the account
@@ -425,6 +520,17 @@ pub struct AccountInfoFromEthereum {
     pub wallet_name: String,
     pub account_public_key: Pubkey,
     pub account_balance: u64,
+}
+
+/// The `TokenMetadataAction` enum is used to indicate whether the `set_token_metadata` function should create new metadata for a token, or update the existing metadata.
+/// 
+/// * `Create` - Indicates that new metadata should be created. This should be used when the token does not have any existing metadata.
+/// * `Update` - Indicates that the existing metadata should be updated. This should be used when the token already has metadata, and it needs to be modified.
+///
+#[derive(AnchorSerialize, AnchorDeserialize)]
+pub enum TokenMetadataAction {
+    Create,
+    Update
 }
 
 #[cfg(test)]
@@ -441,6 +547,7 @@ mod tests {
 
     use crate::context::__client_accounts_import_ethereum_token_state_context::ImportEthereumTokenStateContext;
     use crate::context::__client_accounts_initialize_context::InitializeContext;
+    use crate::context::__client_accounts_set_token_metadata_context::SetTokenMetadataContext;
     use crate::context::__client_accounts_withdraw_tokens_from_community_wallet_context::WithdrawTokensFromCommunityWalletContext;
     use crate::context::__client_accounts_withdraw_tokens_from_liquidity_wallet_context::WithdrawTokensFromLiquidityWalletContext;
     use crate::context::__client_accounts_withdraw_tokens_from_marketing_wallet_context::WithdrawTokensFromMarketingWalletContext;
@@ -644,6 +751,80 @@ mod tests {
             contract_state,
             mint,
             burning_account,
+            token_program,
+        };
+
+        let mut transaction = Transaction::new_with_payer(
+            &[Instruction::new_with_bytes(
+                program_id,
+                &data,
+                accs.to_account_metas(Some(false)),
+            )],
+            Some(&payer.pubkey()),
+        );
+
+        transaction.sign(&[payer], recent_blockhash);
+        banks_client
+            .process_transaction_with_commitment(transaction.clone(), CommitmentLevel::Finalized)
+            .await
+            .unwrap();
+
+        Ok(())
+    }
+
+    async fn sets_the_token_metadata_action(
+        banks_client: &mut BanksClient,
+        payer: &Keypair,
+        recent_blockhash: Hash,
+        token_metadata_action: TokenMetadataAction
+    ) -> Result<()> {
+        let program_id = id();
+
+        let (
+            contract_state,
+            _,
+            _,
+            _,
+            mint,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+        ) = get_pda_accounts();
+
+        let token_program = spl_token::id();
+
+        let data = instruction::SetTokenMetadata {
+            name: "Test".to_string(),
+            symbol: "TST".to_string(),
+            uri: "https://test.com".to_string(),
+            token_metadata_action,
+        }
+        .data();
+
+        let signer = payer.pubkey();
+
+        let seed1 = "metadata".as_bytes();
+        let seed2 = &mpl_token_metadata::id().to_bytes();
+        let seed3 = &mint.to_bytes();
+        let ( metadata_pda, _ ) = Pubkey::find_program_address(&[seed1, seed2, seed3], &mpl_token_metadata::id());
+
+        let accs = SetTokenMetadataContext {
+            contract_state,
+            mint,
+            metadata_pda,
+            metadata_program: mpl_token_metadata::id(),
+            signer,
+            system_program: system_program::ID,
             token_program,
         };
 
@@ -1393,6 +1574,46 @@ mod tests {
 
         transaction.sign(&[&payer], recent_blockhash);
         banks_client.process_transaction(transaction).await.unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic]
+    async fn tes_fail_sets_the_token_metadata_create() {
+        let program_id = id();
+        let mut program_test = ProgramTest::new("leancoin", program_id, processor!(entry));
+        program_test.set_compute_max_units(500000);
+
+        let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+
+        initialize_instruction(&mut banks_client, &payer, recent_blockhash)
+            .await
+            .unwrap();
+
+        sets_the_token_metadata_action(&mut banks_client, &payer, recent_blockhash, TokenMetadataAction::Create)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic]
+    async fn tes_fail_sets_the_token_metadata_update() {
+        let program_id = id();
+        let mut program_test = ProgramTest::new("leancoin", program_id, processor!(entry));
+        program_test.set_compute_max_units(500000);
+
+        let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+
+        initialize_instruction(&mut banks_client, &payer, recent_blockhash)
+            .await
+            .unwrap();
+
+            sets_the_token_metadata_action(&mut banks_client, &payer, recent_blockhash, TokenMetadataAction::Create)
+            .await
+            .unwrap();
+
+        sets_the_token_metadata_action(&mut banks_client, &payer, recent_blockhash, TokenMetadataAction::Update)
+            .await
+            .unwrap();
     }
 
     async fn create_token_account(

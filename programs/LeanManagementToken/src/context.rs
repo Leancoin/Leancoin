@@ -8,6 +8,7 @@ use anchor_lang::{
     Id, Space,
 };
 use anchor_spl::token::{Mint, Token, TokenAccount};
+use mpl_token_metadata;
 
 use crate::account::{ContractState, VestingState};
 
@@ -236,6 +237,50 @@ pub struct ChangeAuthorityContext<'info> {
     )]
     pub contract_state: Box<Account<'info, ContractState>>,
     pub signer: Signer<'info>,
+}
+
+/// Context for the set token metadata instruction.
+///
+/// This context is used to set the token metadata.
+///
+/// The context includes:
+///
+/// - contract_state - the account containing the contract state,
+/// - mint - the mint account,
+/// - signer - the signer of the transaction, who must be the contract's owner,
+/// - metadata_pda - the metadata PDA account,
+/// - system_program - the Solana system program account,
+/// - token_program - the Solana token program account,
+/// - metadata_program - the Metaplex metadata program account,
+///
+/// There are also check comments within the context:
+/// - metadata_pda and metadata_program are checked by the inner instruction.
+#[derive(Accounts)]
+pub struct SetTokenMetadataContext<'info> {
+    #[account(
+        mut,
+        seeds = [CONTRACT_STATE_SEED.as_bytes()],
+        bump = contract_state.contract_state_nonce,
+    )]
+    pub contract_state: Box<Account<'info, ContractState>>,
+    #[account(
+        mut,
+        seeds = [MINT_SEED.as_bytes()],
+        bump = contract_state.mint_nonce,
+    )]
+    pub mint: Box<Account<'info, Mint>>,
+
+    /// CHECK: The metadata program account. It is considered safe because it is checked by the inner instruction, ensuring it is the correct account.
+    #[account(mut, address = Pubkey::find_program_address(&[b"metadata", &mpl_token_metadata::id().to_bytes(), &mint.key().to_bytes()], &mpl_token_metadata::id()).0)]
+    pub metadata_pda: AccountInfo<'info>,
+
+    /// CHECK: The metadata program account. It is considered safe because it is checked by the inner instruction, ensuring it is the correct account.
+    #[account(address = mpl_token_metadata::id())]
+    pub metadata_program: AccountInfo<'info>,
+
+    pub signer: Signer<'info>,
+    pub system_program: Program<'info, System>,
+    pub token_program: Program<'info, Token>,
 }
 
 /// Context for the withdraw_tokens_from_community_wallet instruction.
