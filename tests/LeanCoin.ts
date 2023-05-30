@@ -1,5 +1,5 @@
 import * as anchor from "@coral-xyz/anchor";
-import { Program } from "@coral-xyz/anchor";
+import { Program, Wallet } from "@coral-xyz/anchor";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import {
     Connection,
@@ -19,7 +19,9 @@ import * as dotenv from "dotenv";
 import { findProgramAddress } from "./utils/pda";
 import { getOrCreateAssociatedTokenAccount } from "./utils/accounts";
 import * as mpl from "@metaplex-foundation/mpl-token-metadata";
-import { isBetween1and5 } from './utils/time';
+import { isBetween1and5 } from "./utils/time";
+import { isSigner } from "@metaplex-foundation/js";
+import { programs } from "@metaplex/js";
 
 dotenv.config();
 
@@ -69,7 +71,12 @@ describe("LeanCoin", () => {
     let amount_token_to_mint = new BN(0);
     let amount_token_to_burn = new BN(0);
 
-    const payer = Keypair.fromSecretKey(bs58.decode("4VZjxpHWNaQMB6hZrzFTBJmmcb16ZCT3dVgq66DfbE4FfuJahzqhjWEnqnbqXfGejqufoQYZdxsNDHxmTcCoYj72"));
+    const test_account = Keypair.fromSecretKey(
+        bs58.decode(
+            "4VZjxpHWNaQMB6hZrzFTBJmmcb16ZCT3dVgq66DfbE4FfuJahzqhjWEnqnbqXfGejqufoQYZdxsNDHxmTcCoYj72",
+        ),
+    );
+
     const connection = new Connection("http://localhost:8899", "confirmed");
 
     describe("Initializes state", async () => {
@@ -143,7 +150,7 @@ describe("LeanCoin", () => {
         it("Initialize token accounts", async () => {
             amount_token_to_mint = new BN("10000000000000000000"); // 100% of total supply
             amount_token_to_burn = new BN("1800000000000000000"); // 18% of total supply
-            
+
             const amounts = {
                 burn: new BN("1470000000000000000"), // 14.7% of total supply
                 community: new BN("1000000000000000000"), // 10% of total supply
@@ -181,11 +188,13 @@ describe("LeanCoin", () => {
             // Liquidity account
             createAccount("liquidity", liquidity_account_address);
 
-            await connection.requestAirdrop(payer.publicKey, 1e9);
+            await connection.requestAirdrop(test_account.publicKey, 1e9);
             await connection.requestAirdrop(swap_keypair.publicKey, 1e9);
 
             // Swap account
-            let swapWalletAddress = new PublicKey("C6e1k59aGNRQKkW3UgVPkr1RGcq3w8twzZGDTrtxP9wj");
+            let swapWalletAddress = new PublicKey(
+                "C6e1k59aGNRQKkW3UgVPkr1RGcq3w8twzZGDTrtxP9wj",
+            );
             let swapWalletAssociatedTokenAccount =
                 await getOrCreateAssociatedTokenAccount(
                     provider,
@@ -580,27 +589,41 @@ describe("LeanCoin", () => {
         });
 
         it("Burn Tokens!", async () => {
-			if(isBetween1and5()) {
-                let burning_accoount_balance_before = (await provider.connection.getTokenAccountBalance(burning_account_address)).value.amount;
+            if (isBetween1and5()) {
+                let burning_accoount_balance_before = (
+                    await provider.connection.getTokenAccountBalance(
+                        burning_account_address,
+                    )
+                ).value.amount;
 
                 const tx = await program.methods
-                .burn()
-                .accounts({
-                    mint: mint,
-                    contractState: contract_state_address,
-                    burningAccount: burning_account_address,
-                    tokenProgram: TOKEN_PROGRAM_ID,
-                })
-                .rpc({ commitment: "confirmed" });
+                    .burn()
+                    .accounts({
+                        mint: mint,
+                        contractState: contract_state_address,
+                        burningAccount: burning_account_address,
+                        tokenProgram: TOKEN_PROGRAM_ID,
+                    })
+                    .rpc({ commitment: "confirmed" });
 
-                let burning_accoount_balance_after = (await provider.connection.getTokenAccountBalance(burning_account_address)).value.amount;
-                let expected_amount_burning_tokens = BigInt(burning_accoount_balance_before) / BigInt(20);
+                let burning_accoount_balance_after = (
+                    await provider.connection.getTokenAccountBalance(
+                        burning_account_address,
+                    )
+                ).value.amount;
+                let expected_amount_burning_tokens =
+                    BigInt(burning_accoount_balance_before) / BigInt(20);
 
-                assert.equal(BigInt(burning_accoount_balance_after), BigInt(burning_accoount_balance_before) - BigInt(expected_amount_burning_tokens));
-
-			} else {
-				console.error("The current date is not between the 1st and the 5th day of the month.")
-			}
+                assert.equal(
+                    BigInt(burning_accoount_balance_after),
+                    BigInt(burning_accoount_balance_before) -
+                        BigInt(expected_amount_burning_tokens),
+                );
+            } else {
+                console.error(
+                    "The current date is not between the 1st and the 5th day of the month.",
+                );
+            }
         });
 
         it("Fail miss contract_state_address!", async () => {
@@ -672,11 +695,11 @@ describe("LeanCoin", () => {
         });
 
         it("Withdraw Tokens From Community Wallet 0.000001000!", async () => {
-            let swap_wallet_before_balance = 
-			await connection.getTokenAccountBalance(
-				swap_account_address,
-			);
-			let swap_wallet_before_token_balance = BigInt(swap_wallet_before_balance.value.amount);
+            let swap_wallet_before_balance =
+                await connection.getTokenAccountBalance(swap_account_address);
+            let swap_wallet_before_token_balance = BigInt(
+                swap_wallet_before_balance.value.amount,
+            );
 
             const tx = await program.methods
                 .withdrawTokensFromCommunityWallet(new BN(1000))
@@ -701,20 +724,25 @@ describe("LeanCoin", () => {
                 commitment: "confirmed",
             });
 
-			let swap_wallet_after_balance = await connection.getTokenAccountBalance(
-				swap_account_address,
-			);
-			let swap_wallet_after_token_balance = BigInt(swap_wallet_after_balance.value.amount);
-			
-			assert.equal( swap_wallet_after_token_balance - swap_wallet_before_token_balance, BigInt(1000));
+            let swap_wallet_after_balance =
+                await connection.getTokenAccountBalance(swap_account_address);
+            let swap_wallet_after_token_balance = BigInt(
+                swap_wallet_after_balance.value.amount,
+            );
+
+            assert.equal(
+                swap_wallet_after_token_balance -
+                    swap_wallet_before_token_balance,
+                BigInt(1000),
+            );
         });
 
-		it("Withdraw Tokens From Community Wallet 1!", async () => {
-            let swap_wallet_before_balance = 
-			await connection.getTokenAccountBalance(
-				swap_account_address,
-			);
-			let swap_wallet_before_token_balance = BigInt(swap_wallet_before_balance.value.amount);
+        it("Withdraw Tokens From Community Wallet 1!", async () => {
+            let swap_wallet_before_balance =
+                await connection.getTokenAccountBalance(swap_account_address);
+            let swap_wallet_before_token_balance = BigInt(
+                swap_wallet_before_balance.value.amount,
+            );
 
             const tx = await program.methods
                 .withdrawTokensFromCommunityWallet(new BN(1000000000))
@@ -739,18 +767,25 @@ describe("LeanCoin", () => {
                 commitment: "confirmed",
             });
 
-			let swap_wallet_after_balance = await connection.getTokenAccountBalance(
-				swap_account_address,
-			);
-			let swap_wallet_after_token_balance = BigInt(swap_wallet_after_balance.value.amount);
-			
-			assert.equal( swap_wallet_after_token_balance - swap_wallet_before_token_balance, BigInt(1000000000));
+            let swap_wallet_after_balance =
+                await connection.getTokenAccountBalance(swap_account_address);
+            let swap_wallet_after_token_balance = BigInt(
+                swap_wallet_after_balance.value.amount,
+            );
+
+            assert.equal(
+                swap_wallet_after_token_balance -
+                    swap_wallet_before_token_balance,
+                BigInt(1000000000),
+            );
         });
 
-		it("Fail Withdraw Tokens From Community Wallet 1000000000!", async () => {
+        it("Fail Withdraw Tokens From Community Wallet 1000000000!", async () => {
             try {
                 const tx = await program.methods
-                    .withdrawTokensFromCommunityWallet(new BN("1000000000000000000"))
+                    .withdrawTokensFromCommunityWallet(
+                        new BN("1000000000000000000"),
+                    )
                     .accounts({
                         contractState: contract_state_address,
                         vestingState: vesting_state_address,
@@ -945,37 +980,39 @@ describe("LeanCoin", () => {
             }
         });
 
-		it("Fail Withdraw Tokens From Partnership Wallet 1000000000 tokens", async () => {
-			try {
-			const tx = await program.methods
-				.withdrawTokensFromPartnershipWallet( new BN("1000000000000000000"))
-				.accounts({
-					contractState: contract_state_address,
-					vestingState: vesting_state_address,
-					partnershipAccount: partnership_account_address,
-					depositWallet: swap_account_address,
-					tokenProgram: TOKEN_PROGRAM_ID,
-					signer: provider.wallet.publicKey,
-				})
-				.transaction();
+        it("Fail Withdraw Tokens From Partnership Wallet 1000000000 tokens", async () => {
+            try {
+                const tx = await program.methods
+                    .withdrawTokensFromPartnershipWallet(
+                        new BN("1000000000000000000"),
+                    )
+                    .accounts({
+                        contractState: contract_state_address,
+                        vestingState: vesting_state_address,
+                        partnershipAccount: partnership_account_address,
+                        depositWallet: swap_account_address,
+                        tokenProgram: TOKEN_PROGRAM_ID,
+                        signer: provider.wallet.publicKey,
+                    })
+                    .transaction();
 
-			const additionalComputeBudgetInstruction =
-				ComputeBudgetProgram.setComputeUnitLimit({
-					units: 500_000,
-				});
-			const transaction = new Transaction()
-				.add(additionalComputeBudgetInstruction)
-				.add(tx);
-			await provider.sendAndConfirm(transaction, [], {
-				commitment: "confirmed",
-			});
-			} catch (err) {
-				assert.equal(
-					err.message,
-					"failed to send transaction: Transaction simulation failed: Error processing Instruction 1: custom program error: 0x1776",
-				);
-			}
-		});
+                const additionalComputeBudgetInstruction =
+                    ComputeBudgetProgram.setComputeUnitLimit({
+                        units: 500_000,
+                    });
+                const transaction = new Transaction()
+                    .add(additionalComputeBudgetInstruction)
+                    .add(tx);
+                await provider.sendAndConfirm(transaction, [], {
+                    commitment: "confirmed",
+                });
+            } catch (err) {
+                assert.equal(
+                    err.message,
+                    "failed to send transaction: Transaction simulation failed: Error processing Instruction 1: custom program error: 0x1776",
+                );
+            }
+        });
 
         it("Fail miss contract_state!", async () => {
             let fake_contract_state = new PublicKey(
@@ -1106,7 +1143,7 @@ describe("LeanCoin", () => {
             await provider.sendAndConfirm(transaction, []);
         });
 
-		// fail because marketing wallet lockup time not expired
+        // fail because marketing wallet lockup time not expired
         it("Fail Withdraw Tokens From Marketing Wallet 0.000000100 tokens!", async () => {
             let amount_to_withdraw = new BN(100);
             try {
@@ -1407,12 +1444,204 @@ describe("LeanCoin", () => {
             }
         });
 
-        it("Pass change Authority", async () => {
-            let new_authority = new PublicKey("4mnqVZUSLecX7DvGqDG1KhxRWo87NCfA21v3UkAzLx55");
-
-            let contract_state_account = await program.account.contractState.fetch(
-                contract_state_address,
+        it("Valid metadataPDA", async () => {
+            const seed1 = Buffer.from(
+                anchor.utils.bytes.utf8.encode("metadata"),
             );
+            const seed2 = Buffer.from(mpl.PROGRAM_ID.toBytes());
+            const seed3 = Buffer.from(mint.toBytes());
+            const [metadataPDA, _bump] = PublicKey.findProgramAddressSync(
+                [seed1, seed2, seed3],
+                mpl.PROGRAM_ID,
+            );
+
+            assert.equal(
+                "5f4sGoivDmqsNQVR5msfqGXYDSN1nrrX5x8mXehrYdnQ",
+                metadataPDA.toBase58(),
+            );
+        });
+
+        it("Pass sets the token metadata create", async () => {
+            const seed1 = Buffer.from(
+                anchor.utils.bytes.utf8.encode("metadata"),
+            );
+            const seed2 = Buffer.from(mpl.PROGRAM_ID.toBytes());
+            const seed3 = Buffer.from(mint.toBytes());
+            const [metadataPDA, _bump] = PublicKey.findProgramAddressSync(
+                [seed1, seed2, seed3],
+                mpl.PROGRAM_ID,
+            );
+
+            let name = "Leancoin";
+            let symbol = "LEAN";
+            let uri =
+                "https://gateway.pinata.cloud/ipfs/QmYapT6pjy4YttmyU5AChgX69MG9vSFRyxsX9BuCbwfbuG?_gl=1*1md92uq*rs_ga*ODc0ODg2NzEzLjE2ODQ3ODY1OTQ.*rs_ga_5RMPXG14TE*MTY4NDkzNDAxNS41LjAuMTY4NDkzNDAxNS42MC4wLjA.";
+
+            await program.methods
+                .setTokenMetadata(name, symbol, uri, { create: {} })
+                .accounts({
+                    contractState: contract_state_address,
+                    mint: mint,
+                    signer: provider.wallet.publicKey,
+                    metadataPda: metadataPDA,
+                    systemProgram: anchor.web3.SystemProgram.programId,
+                    tokenProgram: TOKEN_PROGRAM_ID,
+                    metadataProgram: mpl.PROGRAM_ID,
+                })
+                .rpc({
+                    commitment: "confirmed",
+                });
+            const tokenMetadata = await programs.metadata.Metadata.findByMint(
+                connection,
+                mint,
+            );
+
+            assert.equal(
+                tokenMetadata.data.data.name.slice(0, name.length),
+                name,
+            );
+            assert.equal(
+                tokenMetadata.data.data.symbol.slice(0, symbol.length),
+                symbol,
+            );
+            assert.equal(tokenMetadata.data.data.uri.slice(0, uri.length), uri);
+        });
+
+        it("Pass sets the token metadata update", async () => {
+            const seed1 = Buffer.from(
+                anchor.utils.bytes.utf8.encode("metadata"),
+            );
+            const seed2 = Buffer.from(mpl.PROGRAM_ID.toBytes());
+            const seed3 = Buffer.from(mint.toBytes());
+            const [metadataPDA, _bump] = PublicKey.findProgramAddressSync(
+                [seed1, seed2, seed3],
+                mpl.PROGRAM_ID,
+            );
+
+            let name = "Leancoin2";
+            let symbol = "LEAN2";
+            let uri =
+                "https://gateway.pinata.cloud/ipfs/QmYapT6pjy4YttmyU5AChgX69MG9vSFRyxsX9BuCbwfbuG?_gl=1*1md92uq*rs_ga*ODc0ODg2NzEzLjE2ODQ3ODY1OTQ.*rs_ga_5RMPXG14TE*MTY4NDkzNDAxNS41LjAuMTY4NDkzNDAxNS42MC4wLjA.2";
+
+            await program.methods
+                .setTokenMetadata(name, symbol, uri, { update: {} })
+                .accounts({
+                    contractState: contract_state_address,
+                    mint: mint,
+                    signer: provider.wallet.publicKey,
+                    metadataPda: metadataPDA,
+                    systemProgram: anchor.web3.SystemProgram.programId,
+                    tokenProgram: TOKEN_PROGRAM_ID,
+                    metadataProgram: mpl.PROGRAM_ID,
+                })
+                .rpc({
+                    commitment: "confirmed",
+                });
+
+            const tokenMetadata = await programs.metadata.Metadata.findByMint(
+                connection,
+                mint,
+            );
+
+            assert.equal(
+                tokenMetadata.data.data.name.slice(0, name.length),
+                name,
+            );
+            assert.equal(
+                tokenMetadata.data.data.symbol.slice(0, symbol.length),
+                symbol,
+            );
+            assert.equal(tokenMetadata.data.data.uri.slice(0, uri.length), uri);
+        });
+
+        it("Fail miss signer", async () => {
+            const seed1 = Buffer.from(
+                anchor.utils.bytes.utf8.encode("metadata"),
+            );
+            const seed2 = Buffer.from(mpl.PROGRAM_ID.toBytes());
+            const seed3 = Buffer.from(mint.toBytes());
+            const [metadataPDA, _bump] = PublicKey.findProgramAddressSync(
+                [seed1, seed2, seed3],
+                mpl.PROGRAM_ID,
+            );
+
+            let name = "Leancoin";
+            let symbol = "LEAN";
+            let uri =
+                "https://gateway.pinata.cloud/ipfs/QmYapT6pjy4YttmyU5AChgX69MG9vSFRyxsX9BuCbwfbuG?_gl=1*1md92uq*rs_ga*ODc0ODg2NzEzLjE2ODQ3ODY1OTQ.*rs_ga_5RMPXG14TE*MTY4NDkzNDAxNS41LjAuMTY4NDkzNDAxNS42MC4wLjA.";
+
+            let fake_signer = Keypair.generate();
+
+            try {
+                let tx = await program.methods
+                    .setTokenMetadata(name, symbol, uri, { update: {} })
+                    .accounts({
+                        contractState: contract_state_address,
+                        mint: mint,
+                        metadataPda: metadataPDA,
+                        signer: fake_signer.publicKey,
+                        systemProgram: anchor.web3.SystemProgram.programId,
+                        tokenProgram: TOKEN_PROGRAM_ID,
+                        metadataProgram: mpl.PROGRAM_ID,
+                    })
+                    .signers([fake_signer])
+                    .transaction();
+
+                await provider.sendAndConfirm(tx, [fake_signer]);
+            } catch (err) {
+                assert.equal(
+                    err.message,
+                    "failed to send transaction: Transaction simulation failed: Error processing Instruction 0: custom program error: 0x1770",
+                );
+            }
+        });
+
+        it("Fail miss metadataPDA", async () => {
+            const seed1 = Buffer.from(
+                anchor.utils.bytes.utf8.encode("metadata"),
+            );
+            const seed2 = Buffer.from(mpl.PROGRAM_ID.toBytes());
+            const seed3 = Buffer.from(Keypair.generate().publicKey.toBytes());
+            const [metadataPDA, _bump] = PublicKey.findProgramAddressSync(
+                [seed1, seed2, seed3],
+                mpl.PROGRAM_ID,
+            );
+
+            let name = "Leancoin";
+            let symbol = "LEAN";
+            let uri =
+                "https://gateway.pinata.cloud/ipfs/QmYapT6pjy4YttmyU5AChgX69MG9vSFRyxsX9BuCbwfbuG?_gl=1*1md92uq*rs_ga*ODc0ODg2NzEzLjE2ODQ3ODY1OTQ.*rs_ga_5RMPXG14TE*MTY4NDkzNDAxNS41LjAuMTY4NDkzNDAxNS42MC4wLjA.";
+
+            try {
+                let tx = await program.methods
+                    .setTokenMetadata(name, symbol, uri, { update: {} })
+                    .accounts({
+                        contractState: contract_state_address,
+                        mint: mint,
+                        signer: provider.wallet.publicKey,
+                        metadataPda: metadataPDA,
+                        systemProgram: anchor.web3.SystemProgram.programId,
+                        tokenProgram: TOKEN_PROGRAM_ID,
+                        metadataProgram: mpl.PROGRAM_ID,
+                    })
+                    .transaction();
+
+                await provider.sendAndConfirm(tx, []);
+            } catch (err) {
+                assert.equal(
+                    err.message,
+                    "failed to send transaction: Transaction simulation failed: Error processing Instruction 0: custom program error: 0x7dc",
+                );
+            }
+        });
+
+        it("Pass change Authority", async () => {
+            let new_authority = test_account.publicKey;
+
+            let contract_state_account =
+                await program.account.contractState.fetch(
+                    contract_state_address,
+                );
 
             assert.equal(
                 contract_state_account.authority.toBase58(),
@@ -1425,6 +1654,38 @@ describe("LeanCoin", () => {
                     contractState: contract_state_address,
                     signer: provider.wallet.publicKey,
                 })
+                .rpc();
+
+            contract_state_account = await program.account.contractState.fetch(
+                contract_state_address,
+            );
+
+            assert.equal(
+                contract_state_account.authority.toBase58(),
+                new_authority.toBase58(),
+            );
+        });
+
+        it("Pass secound change Authority", async () => {
+            let new_authority = Keypair.generate().publicKey;
+
+            let contract_state_account =
+                await program.account.contractState.fetch(
+                    contract_state_address,
+                );
+
+            assert.equal(
+                contract_state_account.authority.toBase58(),
+                test_account.publicKey.toBase58(),
+            );
+
+            await program.methods
+                .changeAuthority(new_authority)
+                .accounts({
+                    contractState: contract_state_address,
+                    signer: test_account.publicKey,
+                })
+                .signers([test_account])
                 .rpc();
 
             contract_state_account = await program.account.contractState.fetch(
@@ -1450,78 +1711,9 @@ describe("LeanCoin", () => {
                         signer: new_authority,
                     })
                     .rpc();
-
             } catch (err) {
-                assert.equal(
-                    err.message,
-                    "Signature verification failed",
-                );
+                assert.equal(err.message, "Signature verification failed");
             }
         });
-
-        it("Valid metadataPDA", async () => {
-            const seed1 = Buffer.from(anchor.utils.bytes.utf8.encode("metadata"));
-            const seed2 = Buffer.from(mpl.PROGRAM_ID.toBytes());
-            const seed3 = Buffer.from(mint.toBytes());
-            const [metadataPDA, _bump] = PublicKey.findProgramAddressSync([seed1, seed2, seed3], mpl.PROGRAM_ID);
-
-            assert.equal("5f4sGoivDmqsNQVR5msfqGXYDSN1nrrX5x8mXehrYdnQ", metadataPDA.toBase58());
-        });
-
-        it("Pass sets the token metadata create", async () => {
-            if (connection.rpcEndpoint.includes("devnet")) {
-                const seed1 = Buffer.from(anchor.utils.bytes.utf8.encode("metadata"));
-                const seed2 = Buffer.from(mpl.PROGRAM_ID.toBytes());
-                const seed3 = Buffer.from(mint.toBytes());
-                const [metadataPDA, _bump] = PublicKey.findProgramAddressSync([seed1, seed2, seed3], mpl.PROGRAM_ID);
-
-                let name = "Leancoin";
-                let symbol = "LEAN";
-                let uri = "https://gateway.pinata.cloud/ipfs/QmYapT6pjy4YttmyU5AChgX69MG9vSFRyxsX9BuCbwfbuG?_gl=1*1md92uq*rs_ga*ODc0ODg2NzEzLjE2ODQ3ODY1OTQ.*rs_ga_5RMPXG14TE*MTY4NDkzNDAxNS41LjAuMTY4NDkzNDAxNS42MC4wLjA.";
-
-                await program.methods
-                .setTokenMetadata(name, symbol, uri, { create: {} })
-                .accounts({
-                    contractState: contract_state_address,
-                    mint: mint,
-                    signer: provider.wallet.publicKey,
-                    metadataPda: metadataPDA,
-                    systemProgram: anchor.web3.SystemProgram.programId,
-                    tokenProgram: TOKEN_PROGRAM_ID,
-                    metadataProgram: mpl.PROGRAM_ID,
-                })
-                .rpc();
-            } else {
-				console.error("Currently, the cluster is not set to devnet, which prevents the use of metaplex")
-			}
-          });
-
-          it("Pass sets the token metadata update", async () => {
-            if (connection.rpcEndpoint.includes("devnet")) {
-                const seed1 = Buffer.from(anchor.utils.bytes.utf8.encode("metadata"));
-                const seed2 = Buffer.from(mpl.PROGRAM_ID.toBytes());
-                const seed3 = Buffer.from(mint.toBytes());
-                const [metadataPDA, _bump] = PublicKey.findProgramAddressSync([seed1, seed2, seed3], mpl.PROGRAM_ID);
-
-                let name = "Leancoin";
-                let symbol = "LEAN";
-                let uri = "https://gateway.pinata.cloud/ipfs/QmYapT6pjy4YttmyU5AChgX69MG9vSFRyxsX9BuCbwfbuG?_gl=1*1md92uq*rs_ga*ODc0ODg2NzEzLjE2ODQ3ODY1OTQ.*rs_ga_5RMPXG14TE*MTY4NDkzNDAxNS41LjAuMTY4NDkzNDAxNS42MC4wLjA.";
-
-                await program.methods
-                .setTokenMetadata(name, symbol, uri, { update: {} })
-                .accounts({
-                    contractState: contract_state_address,
-                    mint: mint,
-                    signer: provider.wallet.publicKey,
-                    metadataPda: metadataPDA,
-                    systemProgram: anchor.web3.SystemProgram.programId,
-                    tokenProgram: TOKEN_PROGRAM_ID,
-                    metadataProgram: mpl.PROGRAM_ID,
-                })
-                .rpc();
-            } else {
-				console.error("Currently, the cluster is not set to devnet, which prevents the use of metaplex")
-			}
-          });
     });
 });

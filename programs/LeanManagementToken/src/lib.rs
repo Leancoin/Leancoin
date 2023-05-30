@@ -14,7 +14,9 @@ use anchor_lang::{
         Signer, System, ToAccountInfo,
     },
     program,
-    solana_program::{clock, pubkey::Pubkey, sysvar::Sysvar as SolanaSysvar, program::invoke_signed},
+    solana_program::{
+        clock, program::invoke_signed, pubkey::Pubkey, sysvar::Sysvar as SolanaSysvar,
+    },
 };
 use anchor_spl::token::{self, Burn};
 
@@ -39,8 +41,8 @@ declare_id!("CeFVa5iijJASnRmMCvrHep8wVYRZ3XxAmgXArNJhpjmx");
 #[program]
 pub mod leancoin {
     use mpl_token_metadata::{
+        instruction::{create_metadata_accounts_v3, update_metadata_accounts_v2},
         state::DataV2,
-        instruction::{ create_metadata_accounts_v3, update_metadata_accounts_v2 }
     };
 
     use crate::error_codes::LeancoinError;
@@ -424,9 +426,9 @@ pub mod leancoin {
     }
 
     /// Sets new token metadata
-    /// 
+    ///
     /// ### Arguments
-    /// 
+    ///
     /// * `name` - new token name
     /// * `symbol` - new token symbol
     /// * `uri` - new token uri
@@ -459,7 +461,7 @@ pub mod leancoin {
             mint_authority.clone(),
             payer.clone(),
             update_authority.clone(),
-            system_program.clone()
+            system_program.clone(),
         ];
 
         let create_metadata_accounts_instruction = create_metadata_accounts_v3(
@@ -490,7 +492,7 @@ pub mod leancoin {
             collection: None,
             uses: None,
         };
-        
+
         let update_metadata_accounts_instruction = update_metadata_accounts_v2(
             *program_id.key,
             *metadata_pda.key,
@@ -500,16 +502,24 @@ pub mod leancoin {
             None,
             Some(true),
         );
-        
+
         match token_metadata_action {
             TokenMetadataAction::Create => {
-                invoke_signed(&create_metadata_accounts_instruction, account_infos, &[seeds])?;
+                invoke_signed(
+                    &create_metadata_accounts_instruction,
+                    account_infos,
+                    &[seeds],
+                )?;
             }
             TokenMetadataAction::Update => {
-                invoke_signed(&update_metadata_accounts_instruction, account_infos, &[seeds])?;
+                invoke_signed(
+                    &update_metadata_accounts_instruction,
+                    account_infos,
+                    &[seeds],
+                )?;
             }
         }
-        
+
         Ok(())
     }
 }
@@ -523,14 +533,14 @@ pub struct AccountInfoFromEthereum {
 }
 
 /// The `TokenMetadataAction` enum is used to indicate whether the `set_token_metadata` function should create new metadata for a token, or update the existing metadata.
-/// 
+///
 /// * `Create` - Indicates that new metadata should be created. This should be used when the token does not have any existing metadata.
 /// * `Update` - Indicates that the existing metadata should be updated. This should be used when the token already has metadata, and it needs to be modified.
 ///
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub enum TokenMetadataAction {
     Create,
-    Update
+    Update,
 }
 
 #[cfg(test)]
@@ -772,34 +782,17 @@ mod tests {
         Ok(())
     }
 
-    async fn sets_the_token_metadata_action(
+    async fn set_the_token_metadata_instruction(
         banks_client: &mut BanksClient,
         payer: &Keypair,
         recent_blockhash: Hash,
-        token_metadata_action: TokenMetadataAction
+        token_metadata_action: TokenMetadataAction,
+        metadata_pda: Pubkey,
     ) -> Result<()> {
         let program_id = id();
 
-        let (
-            contract_state,
-            _,
-            _,
-            _,
-            mint,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-        ) = get_pda_accounts();
+        let (contract_state, _, _, _, mint, _, _, _, _, _, _, _, _, _, _, _, _, _) =
+            get_pda_accounts();
 
         let token_program = spl_token::id();
 
@@ -811,19 +804,12 @@ mod tests {
         }
         .data();
 
-        let signer = payer.pubkey();
-
-        let seed1 = "metadata".as_bytes();
-        let seed2 = &mpl_token_metadata::id().to_bytes();
-        let seed3 = &mint.to_bytes();
-        let ( metadata_pda, _ ) = Pubkey::find_program_address(&[seed1, seed2, seed3], &mpl_token_metadata::id());
-
         let accs = SetTokenMetadataContext {
             contract_state,
             mint,
             metadata_pda,
             metadata_program: mpl_token_metadata::id(),
-            signer,
+            signer: payer.pubkey(),
             system_program: system_program::ID,
             token_program,
         };
@@ -1578,7 +1564,7 @@ mod tests {
 
     #[tokio::test]
     #[should_panic]
-    async fn tes_fail_sets_the_token_metadata_create() {
+    async fn test_fail_set_the_token_metadata_wrong_signer() {
         let program_id = id();
         let mut program_test = ProgramTest::new("leancoin", program_id, processor!(entry));
         program_test.set_compute_max_units(500000);
@@ -1589,14 +1575,29 @@ mod tests {
             .await
             .unwrap();
 
-        sets_the_token_metadata_action(&mut banks_client, &payer, recent_blockhash, TokenMetadataAction::Create)
-            .await
-            .unwrap();
+        let (_, _, _, _, mint, _, _, _, _, _, _, _, _, _, _, _, _, _) = get_pda_accounts();
+
+        let sub_signer = Keypair::new();
+        let seed1 = "metadata".as_bytes();
+        let seed2 = &mpl_token_metadata::id().to_bytes();
+        let seed3 = &mint.to_bytes();
+        let (metadata_pda, _) =
+            Pubkey::find_program_address(&[seed1, seed2, seed3], &mpl_token_metadata::id());
+
+        set_the_token_metadata_instruction(
+            &mut banks_client,
+            &sub_signer,
+            recent_blockhash,
+            TokenMetadataAction::Create,
+            metadata_pda,
+        )
+        .await
+        .unwrap();
     }
 
     #[tokio::test]
     #[should_panic]
-    async fn tes_fail_sets_the_token_metadata_update() {
+    async fn tes_fail_set_the_token_metadata_wrong_metadata_pda() {
         let program_id = id();
         let mut program_test = ProgramTest::new("leancoin", program_id, processor!(entry));
         program_test.set_compute_max_units(500000);
@@ -1607,13 +1608,21 @@ mod tests {
             .await
             .unwrap();
 
-            sets_the_token_metadata_action(&mut banks_client, &payer, recent_blockhash, TokenMetadataAction::Create)
-            .await
-            .unwrap();
+        let seed1 = "metadata".as_bytes();
+        let seed2 = &mpl_token_metadata::id().to_bytes();
+        let seed3 = &Keypair::new().pubkey().to_bytes();
+        let (metadata_pda, _) =
+            Pubkey::find_program_address(&[seed1, seed2, seed3], &mpl_token_metadata::id());
 
-        sets_the_token_metadata_action(&mut banks_client, &payer, recent_blockhash, TokenMetadataAction::Update)
-            .await
-            .unwrap();
+        set_the_token_metadata_instruction(
+            &mut banks_client,
+            &payer,
+            recent_blockhash,
+            TokenMetadataAction::Create,
+            metadata_pda,
+        )
+        .await
+        .unwrap();
     }
 
     async fn create_token_account(

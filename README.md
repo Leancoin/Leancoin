@@ -1,6 +1,12 @@
 # Specifications
 The documentation can be found here: https://docs.leancoin.io/swap-lean/
 
+# Currently deployed version
+The program is currently deployed from the following commit: `c5102aa2fba7fb9044b7d88dfcea3c026a8f1d8e` which is the last audited version of contract: https://hacken.io/audits/leancoin/
+
+The newer commit improved some tests but it did not modify any production code (contract's code) so it is the same code from deployment's perspective.
+
+
 # Getting Started
 Leancoin requires some dependencies to be built and deployed.
 
@@ -117,3 +123,4 @@ That's why we decided to use it as a hint, rather than something that defines ho
 Use the following commands to run tests:
 - Rust tests: `cargo test`
 - TypeScript tests: `anchor test`
+
